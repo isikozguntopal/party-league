@@ -1,0 +1,223 @@
+/* Parti Ligi — genel arayüz tasarımı (style.css'in üstüne gelir) */
+:root {
+  --bg: #0a0f1f;
+  --bg2: #121a30;
+  --card: #182240;
+  --card2: #1f2b50;
+  --line: #2b3a63;
+  --text: #f1f4ff;
+  --muted: #94a0c4;
+  --accent: #ff3d6a;
+  --accent2: #ff7a95;
+  --gold: #facc15;
+  --sky: #38bdf8;
+  --pink: #f472b6;
+  --green: #4ade80;
+  --orange: #fb923c;
+}
+body { background: radial-gradient(1200px 600px at 50% -10%, #1b2552 0%, var(--bg) 60%) fixed; }
+.screen { gap: 14px; }
+#home { padding-top: calc(var(--safe-t) + 14px); }
+#home > :first-child, #lobby > :first-child { margin-top: 0; }
+#home > :last-child, #lobby > :last-child { margin-bottom: 0; }
+h2 { margin: 0; font-size: 17px; font-weight: 800; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sec-head .muted { font-size: 12px; }
+.grow { flex: 1; }
+.btn { border-radius: 16px; }
+.btn.big { padding: 17px 16px; font-size: 18px; }
+.btn.small.on { border-color: var(--green); color: var(--green); }
+.btn.primary { background: linear-gradient(135deg, #ff4d7a, #ff7a3d); border-color: #ff8aa5; box-shadow: 0 8px 24px rgba(255, 61, 106, .35); }
+
+/* Hero */
+.hero { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hero-rings svg { width: 104px; height: 86px; filter: drop-shadow(0 0 18px rgba(250, 204, 21, .35)); animation: float 3.5s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-5px); } }
+.title { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 9px; line-height: 1; }
+.title span { display: block; margin-top: 4px; letter-spacing: 2px; font-size: 27px; background: linear-gradient(90deg, var(--sky), var(--pink), var(--gold), var(--green), var(--orange)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.hero-sub b { color: var(--text); }
+
+/* Profil kartı */
+.profile { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: 22px; padding: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.profile .field span { font-size: 12px; }
+.profile input { padding: 11px 12px; }
+.profile-av { position: relative; font: inherit; background: none; border: 0; padding: 0; width: 72px; height: 72px; flex: none; border-radius: 20px; }
+.profile-av canvas { width: 72px; height: 72px; border-radius: 20px; display: block; box-shadow: 0 0 0 3px rgba(255, 255, 255, .12); transition: transform .15s; }
+.profile-av:active canvas { transform: scale(.94); }
+.edit-badge { position: absolute; right: -4px; bottom: -4px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; font-size: 13px; box-shadow: 0 3px 8px rgba(0, 0, 0, .4); }
+.profile .btn.small { align-self: flex-end; }
+
+.actions { display: flex; flex-direction: column; gap: 10px; }
+.solo-row { gap: 8px; }
+.solo-row .stepper { flex: none; }
+
+/* Oyun kartları (ana ekran) */
+.game-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gcard { font: inherit; color: var(--text); text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px 10px 9px; display: flex; flex-direction: column; gap: 3px; min-width: 0; position: relative; overflow: hidden; transition: transform .12s; }
+.gcard:active { transform: scale(.97); }
+.gcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--c, var(--sky)); opacity: .9; }
+.gcard .ge { font-size: 26px; line-height: 1.1; }
+.gcard b { font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gcard small { color: var(--muted); font-size: 11px; line-height: 1.25; }
+.gcard .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.gcard .tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px; background: rgba(255, 255, 255, .08); color: var(--muted); }
+.gcard.open { grid-column: 1 / -1; background: var(--card2); }
+.gcard.open b { white-space: normal; }
+.gcard .rules-txt { display: none; margin: 4px 0 0; padding-left: 16px; color: #d6dcf5; font-size: 13px; }
+.gcard.open .rules-txt { display: block; }
+.gcard .rules-txt li { margin: 3px 0; }
+.small-note { font-size: 12px; margin: 2px 0 0; }
+
+/* Karakter ekranı */
+.custom-stage { position: relative; flex: none; }
+.custom-cv { height: 36vh; min-height: 220px; border-radius: 22px; background: radial-gradient(circle at 50% 35%, #2a3b6c, #0c1327 70%); }
+.emotes { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.emo { font: inherit; font-size: 20px; width: 40px; height: 40px; border-radius: 12px; background: rgba(8, 12, 28, .7); border: 1px solid var(--line); color: #fff; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.emo:active { transform: scale(.9); }
+.ctabs { display: flex; gap: 6px; }
+.ctab { flex: 1; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 4px; white-space: nowrap; }
+.ctab.on { color: #fff; background: var(--card2); border-color: var(--accent); }
+.custom-opts { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+.custom-head .row { gap: 6px; }
+
+/* Lobi */
+.lobby-head { align-items: stretch; }
+.code-card { display: flex; flex-direction: column; align-items: center; gap: 4px; background: linear-gradient(135deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: 22px; padding: 12px; }
+.code { font-size: 46px; letter-spacing: 10px; padding-left: 10px; background: linear-gradient(90deg, var(--gold), var(--orange)); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
+.plist { gap: 6px; }
+.plist li { padding: 8px 10px; border-radius: 14px; }
+.plist .portrait { border-radius: 12px; }
+.modes { display: flex; flex-direction: column; gap: 8px; }
+.mode { border-radius: 16px; padding: 10px 12px; min-width: 0; }
+.mode.tour { display: flex; flex-direction: column; align-items: stretch; gap: 8px; grid-column: auto; }
+.mode.tour .m-row { display: flex; align-items: center; gap: 8px; }
+.mode .m-txt { min-width: 0; flex: 1; }
+.mode .m-txt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.mode small { white-space: normal; }
+.tg-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 0; }
+.tg { width: auto; height: 40px; font-size: 22px; }
+.mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-grid .mode { flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; }
+.mode-grid .m-emoji { font-size: 22px; }
+.mode-grid small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sticky-row { position: sticky; bottom: 0; padding: 8px 0; z-index: 2; background: linear-gradient(transparent, var(--bg) 35%); }
+.mode-grid { padding-bottom: 4px; }
+
+/* Oyun içi: avatar şeridi vs. */
+.hud-me { border-radius: 10px; }
+.chip { border-radius: 12px; }
+
+/* Kulaktan Kulağa albüm başlığı: taşmasın */
+.cz-top.album { flex-wrap: nowrap; align-items: center; }
+.cz-top.album b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.cz-top.album .cz-step { flex: none; font-size: 11px; }
+
+/* Bil Bakalım: Kâhin ve puan çarpanı */
+.qz-a.seer { outline: 4px solid #facc15; box-shadow: 0 0 22px rgba(250, 204, 21, .8); animation: glowPulse .6s ease-in-out infinite alternate; }
+.qz-a.seer::after { content: '🔮'; position: absolute; top: 6px; right: 8px; font-size: 18px; }
+.qz-a { position: relative; }
+.qz-mult { text-align: center; font-weight: 800; color: #fde68a; }
+
+/* Sapan Arenası: yön (⟲ ⟳) üstte, menzil (− +) altta */
+.sapan-ctl .ctl-right { display: grid; grid-template-columns: 64px 64px; gap: 10px; align-items: center; justify-items: center; }
+.sapan-ctl .ctl-btn.sapan-rot { width: 64px; height: 64px; font-size: 28px; }
+.ctl-btn.sapan-rng { background: radial-gradient(circle at 35% 30%, #fde68a, #b45309); width: 58px; height: 58px; font-size: 32px; line-height: 1; }
+
+/* ---------- Cilalama turu ---------- */
+
+/* Klavye / ekran okuyucu odağı görünür olsun */
+:focus { outline: none; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; border-radius: 12px; }
+input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(250, 204, 21, .18); }
+
+/* Hareketi azalt */
+@media (prefers-reduced-motion: reduce) {
+  .hero-rings svg { animation: none; }
+  .timer.low { animation: none; }
+}
+
+/* Düğmeler: basınca belirgin geri bildirim, birincil düğmede ışık */
+.btn { transition: transform .08s, filter .15s, box-shadow .15s, border-color .15s; }
+.btn:not(:disabled):active { filter: brightness(1.15); }
+.btn.primary { position: relative; overflow: hidden; text-shadow: 0 1px 0 rgba(0, 0, 0, .25); }
+.btn.primary::after { content: ""; position: absolute; inset: 0 0 50% 0; background: linear-gradient(rgba(255, 255, 255, .22), transparent); pointer-events: none; }
+.btn.ghost:active { background: rgba(255, 255, 255, .06); }
+
+/* Ana ekran: oyun kartları kendi rengini taşısın */
+.gcard { background: linear-gradient(160deg, color-mix(in srgb, var(--c, var(--sky)) 16%, var(--card)), var(--card) 65%); border-color: color-mix(in srgb, var(--c, var(--sky)) 35%, var(--line)); }
+.gcard::before { height: 4px; }
+.gcard .ge { font-size: 30px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .35)); }
+.gcard b { font-size: 15px; }
+.gcard small { font-size: 12px; }
+.gcard .tag { background: color-mix(in srgb, var(--c, var(--sky)) 22%, transparent); color: var(--text); }
+.gcard.open { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c, var(--sky)) 70%, transparent), 0 12px 28px rgba(0, 0, 0, .35); }
+
+/* Bölüm başlıkları: vurgu çizgisi */
+.sec-head h2 { padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.1; }
+
+/* Profil ve oda kodu kartları */
+.profile, .code-card { box-shadow: 0 10px 30px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .06); }
+.code-card { border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); }
+.code { font-size: 52px; filter: drop-shadow(0 4px 14px rgba(250, 204, 21, .25)); }
+.plist li { transition: background .2s, border-color .2s; }
+
+/* Oyun içi üst şerit: süre ve ilerleme daha okunur */
+.hud { min-height: 38px; }
+.icon-btn { width: 38px; height: 38px; font-size: 16px; }
+.timer { font-size: 20px; min-width: 42px; }
+.timer.low { animation: lowpulse .8s ease-in-out infinite; }
+@keyframes lowpulse { 50% { transform: scale(1.18); } }
+.timerbar { height: 6px; border-radius: 3px; }
+.timerbar i { border-radius: 3px; box-shadow: 0 0 10px rgba(255, 61, 106, .45); }
+
+/* Oyun alanı çerçevesi */
+.stage { box-shadow: 0 0 0 1px var(--line), 0 12px 32px rgba(0, 0, 0, .4); }
+.banner { font-size: 16px; box-shadow: 0 8px 22px rgba(0, 0, 0, .4); }
+.chat-btn { width: 48px; height: 48px; }
+
+/* Alt panel */
+.status { font-size: 17px; }
+
+/* Kumanda haritanın altında ayrı şerit (Bomba Ustası): harita kapanmaz */
+.ctl.below { position: relative; inset: auto; flex: none; height: 148px; z-index: 4; }
+.ctl.below .ctl-left { top: 0; height: 100%; width: 55%; align-items: center; padding: 0 0 0 22px; }
+.ctl.below .ctl-right { bottom: auto; top: 50%; transform: translateY(-50%); right: 20px; }
+.ctl.below .ctl-right { flex-direction: row; align-items: center; gap: 14px; }
+.ctl.below + .panel { min-height: 0; }
+
+/* Kulaktan Kulağa: zorunlu oy vurgusu */
+.cz-vote-box.need { border-style: solid; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(250, 204, 21, .22); animation: needvote 1.1s ease-in-out infinite; }
+@keyframes needvote { 50% { box-shadow: 0 0 0 6px rgba(250, 204, 21, .08); } }
+@media (prefers-reduced-motion: reduce) { .cz-vote-box.need { animation: none; } }
+
+/* Bil Bakalım: jokerler */
+.qz-jokers { display: flex; gap: 8px; justify-content: center; }
+.qz-joker { font: inherit; font-size: 22px; line-height: 1; color: #fff; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(8, 12, 28, .75); border: 2px solid var(--gold); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.qz-joker small { font-size: 13px; font-weight: 800; }
+.qz-joker:not(:disabled):active { transform: scale(.94); }
+.qz-joker:disabled { opacity: .55; }
+.qz-joker.on { background: linear-gradient(135deg, #f59e0b, #facc15); color: #1f1300; opacity: 1; box-shadow: 0 0 0 3px rgba(250, 204, 21, .35); }
+.qz-joker.spent { opacity: .35; border-style: dashed; border-color: var(--line); text-decoration: line-through; }
+
+/* Takımlar ekranı (takım oyunlarının başında) */
+.team-card { max-height: calc(100% - 24px); overflow-y: auto; }
+.tm-sub { color: var(--muted); font-size: 14px; font-weight: 700; margin: 2px 0 8px; text-align: center; }
+.tm-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.tm-team { text-align: left; background: rgba(8, 12, 28, .6); border: 1px solid var(--line); border-left: 6px solid var(--tc, var(--sky)); border-radius: 14px; padding: 8px 10px; }
+.tm-team.mine { background: color-mix(in srgb, var(--tc, var(--sky)) 18%, rgba(8, 12, 28, .7)); box-shadow: 0 0 0 2px var(--tc, var(--sky)); }
+.tm-name { font-weight: 900; color: var(--tc, #fff); margin-bottom: 6px; }
+.tm-name em { font-style: normal; color: var(--text); font-weight: 800; }
+.tm-members { display: flex; flex-wrap: wrap; gap: 8px; }
+.tm-m { display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, .07); border-radius: 12px; padding: 4px 10px 4px 4px; min-width: 0; }
+.tm-m.me { background: rgba(255, 255, 255, .16); }
+.tm-m img { width: 34px; height: 34px; border-radius: 10px; flex: none; }
+.tm-m b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+.tm-m small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.tm-ok { font-style: normal; font-weight: 900; color: var(--green); margin-left: 2px; }
+.tm-btn { width: 100%; }
+.tm-wait { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+/* Oyun sırasında takım çipi */
+.hud-team { flex: none; max-width: 46%; font-size: 12px; font-weight: 800; color: #fff; padding: 3px 9px; border-radius: 999px; background: rgba(8, 12, 28, .75); border: 2px solid var(--tc, var(--sky)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-team.hidden { display: none; }

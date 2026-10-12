@@ -1,0 +1,12 @@
+[build]
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  # "nft" saf JavaScript; şirket bilgisayarında engellenen esbuild.exe'ye ihtiyaç duymaz
+  node_bundler = "nft"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "no-cache"

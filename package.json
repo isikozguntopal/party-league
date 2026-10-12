@@ -1,0 +1,22 @@
+{
+  "name": "lazer-kafes",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Parti Ligi (Party League) - çok oyunculu, telefonda oynanan mini oyun ligi",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "test": "node test/run.mjs",
+    "build:three": "node scripts/build-three.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.3"
+  },
+  "devDependencies": {
+    "netlify-cli": "^27.10.2",
+    "three": "0.186.1"
+  },
+  "overrides": {
+    "esbuild": "npm:esbuild-wasm@0.28.1"
+  }
+}

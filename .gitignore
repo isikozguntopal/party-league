@@ -1,0 +1,7 @@
+node_modules/
+.netlify/
+# makineye özel Claude ayarları (Windows yolları içerir)
+.claude/settings.json
+.claude/settings.local.json
+.DS_Store
+*.log

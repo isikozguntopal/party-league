@@ -67,6 +67,19 @@ Her değişiklikten sonra `npm test` yeşil kalmalı. `public/sw.js` içindeki `
   (5) sanat/ses, tanıtım, İngilizce → (6) gizlilik politikası, kullanıcı içeriği için bildir/engelle + küfür filtresi →
   (7) TestFlight → (8) App Store incelemesi.
 
+## Şu an neredeyiz (Mac'e geçerken)
+
+Kullanıcıya "Mac'te geliştirmeye başlamadan önce yapılacaklar" listesi adım adım yaptırılıyor:
+
+1. ✅ GitHub: kişisel hesap `isikozguntopal`, özel depolar `party-league` ve `claude-ekip` yüklendi.
+   Commit kimliği: `Özgün Topal <150266122+isikozguntopal@users.noreply.github.com>` (iş e-postası kullanılmaz).
+2. ⏳ Apple Developer Program: **bireysel** kayıt önerildi (iPhone'daki Apple Developer uygulamasıyla, yıllık 99 USD).
+   Kullanıcı kaydı göndermeye gidiyordu; onay durumunu sor.
+3. ⬜ İsim ve alan adı kontrolü (App Store, Türk Patent, partyleague / partiligi alan adları), alan adı satın alma.
+4. ⬜ Gizlilik politikası ve destek sayfası.
+5. ⬜ Cloudflare hesabı (WebSocket oyun sunucusu için).
+6. ⬜ Mac'te: Xcode, Node.js, depoları klonlama, `npm install`, `npm test`, sonra Capacitor ve sunucu taşıma.
+
 ## Bilinen tuzaklar
 
 - Bu proje önce kurumsal bir Windows bilgisayarında geliştirildi. Oradaki kısıtlar (EDR'nin exe engellemesi,

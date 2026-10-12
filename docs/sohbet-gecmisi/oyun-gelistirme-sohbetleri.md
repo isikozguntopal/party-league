@@ -2716,3 +2716,185 @@ Claudeekip uygulamamı macbooktan açıp oradan da ilerlemek isteyebilirim bu y�
 
 Oyunun ana geçmişi 5 oturumda: ilk "bi oyun yapmak istiyorum" oturumu, onun devamları ve bu oturum. İki oturumun içeriği belirsiz; neyle ilgili olduklarına bakıyorum.
 
+**🤖 Claude · 08:16**
+
+Geçmiş dosyaları temiz; kalanlar yalnızca paket adları ve klasör yolları. Şimdi yüklenecek dosyaları kontrol ediyorum: büyük dosya, gizli ayar ya da gereksiz bir şey gitmesin.
+
+**🤖 Claude · 08:17**
+
+Projede zaten bir `CLAUDE.md` varmış (muhtemelen Claude Ekip oturumunda oluşturulmuş). Onu ve proje ayarını okuyorum.
+
+**🤖 Claude · 08:18**
+
+İki projeyi git deposu olarak hazırlıyorum ve hangi dosyaların gideceğini listeliyorum. Henüz commit atmıyorum; önce kişisel kimliğinin tanımlanması gerekiyor.
+
+**🤖 Claude · 08:18**
+
+İki proje de GitHub'a yüklenmeye hazır. Henüz hiçbir şey yüklenmedi; bunun için senin GitHub hesabın gerekiyor.
+
+**Hazırladıklarım**
+- **Parti Ligi:** 67 dosya, yaklaşık 2 MB. Oyunun bütün sohbet geçmişi `docs/sohbet-gecmisi/oyun-gelistirme-sohbetleri.md` dosyasında (6 oturum, 332 mesaj, gün gün). `CLAUDE.md`'yi de devir dosyasına çevirdim: proje yapısı, kararlar, App Store yol haritası ve seninle nasıl çalışılacağı (Türkçe, adım adım, yayını sen isteyince) içinde. Mac'te bu klasörde açılan Claude bu dosyayı kendiliğinden okur.
+- **Claude Ekip:** 14 dosya. Kendi sohbet geçmişi ve `CLAUDE.md`'si eklendi. Mac'te `claude` programını kendiliğinden bulabilmesi için küçük bir ekleme yaptım; bulamazsa eskisi gibi yolu soruyor. 305 MB'lık Windows exe'si (`dist`) yüklenmeyecek.
+
+**Bilmen gerekenler**
+- **Sohbetler Markdown dosyası olarak taşınıyor.** Claude oturum kayıtları bu bilgisayardaki klasör yollarına bağlı; Mac'te Claude'un kaldığı oturumu doğrudan "devam ettirmesini" sağlayamam. Bunun yerine Mac'te Claude'a "sohbet geçmişini oku ve kaldığımız yerden devam edelim" demen yeterli olur.
+- **Ham kayıtları yüklemedim.** İçlerinde banka işlerinle ilgili notlar, şirket kullanıcı adın ve iş e-postan vardı. Dosyalara yalnızca senin mesajların ve benim cevaplarım girdi; e-postalar, kullanıcı adın ve şirket/iş projesi adları maskelendi.
+- **Commit kimliği:** bu bilgisayarın git ayarında iş e-postan ([şirket]) tanımlı. Commit'lerde onu kullanmayacağım.
+
+## Senin yapacağın adım
+
+1. GitHub'da iki **Private** depo aç: `party-league` ve `claude-ekip`. README, .gitignore ve lisans eklenmesin; ikisi de boş kalsın.
+2. Commit'lerde görünecek e-postanı bul: GitHub → **Settings → Emails**. "Keep my email addresses private" seçeneğini açarsan `[e-posta]` gibi gizli bir adres görürsün; onu kullanmanı öneririm.
+
+Bana üç şey gönder:
+- GitHub kullanıcı adın
+- Commit'lerde görünecek adın (ör. Özgün Topal)
+- Commit e-postan (tercihen yukarıdaki noreply adresi)
+
+Gerisini ben yaparım. Yükleme sırasında bir kez GitHub giriş penceresi açılacak; o girişi sen yapacaksın, şifreni bana yazma. Şirket ağı yüklemeyi engellerse projeleri bir USB bellekle Mac'e taşıyıp oradan yükleriz.
+
+### 🧑 Kullanıcı · 08:22
+
+ttblacale atmıyoruz bunu benim şahsi githubıma yüklicez 
+
+github/isikozguntopal kullanıcısına yükleyelim nasıl acıcaz repo yönlendir ney apmam  lazım
+
+**🤖 Claude · 08:23**
+
+Anlaşıldı: şirketin değil, senin kişisel GitHub hesabın **isikozguntopal**. İki depoyu adım adım açalım.
+
+## 1. GitHub'a gir
+Tarayıcıda https://github.com/login adresine git ve **isikozguntopal** hesabınla giriş yap.
+
+## 2. İlk depo: `party-league`
+1. Şu adresi aç: https://github.com/new
+2. Formu şöyle doldur:
+   - **Owner:** `isikozguntopal` (zaten seçili gelmeli)
+   - **Repository name:** `party-league`
+   - **Description:** isteğe bağlı, örneğin `Parti Ligi — arkadaşlarla mini oyun partisi`
+   - **Private**'ı seç (Public değil).
+   - **Add a README file**, **.gitignore** ve **license** seçeneklerini boş bırak; bunlar bizde zaten var.
+3. En alttaki yeşil **Create repository** düğmesine bas.
+
+## 3. İkinci depo: `claude-ekip`
+Yine https://github.com/new adresini aç ve aynısını yap; tek fark **Repository name** `claude-ekip` olacak. Bu da **Private** olsun ve hiçbir dosya eklenmesin.
+
+## 4. Commit e-postanı al
+1. https://github.com/settings/emails adresini aç.
+2. **Keep my email addresses private** kutusunu işaretle.
+3. Altında `[e-posta]` gibi bir adres çıkacak; onu kopyala.
+
+Bu adres sayesinde commit'lerde gerçek e-postan görünmez.
+
+---
+
+Bunlar bitince bana şunları yaz:
+- "repolar hazır"
+- Kopyaladığın noreply e-posta adresi
+- Commit'lerde görünecek adın (örneğin "Özgün Topal")
+
+Sonra yükleme komutlarını ben çalıştıracağım. O sırada bir kez **GitHub giriş penceresi** açılacak; girişi sen yapacaksın, şifreni bana yazma.
+
+### 🧑 Kullanıcı · 08:32
+
+[e-posta]
+
+repolar hazır
+
+Adım Özgün Topal
+
+**🤖 Claude · 08:32**
+
+Kimliği yalnızca bu iki depoya tanımlayıp ilk commit'leri atıyorum. Bilgisayarın genel git ayarına (iş e-postası) dokunmuyorum.
+
+**🤖 Claude · 08:33**
+
+Ben komutu çalıştırdığımda giriş penceresi açılamıyor (benim terminalimde etkileşim kapalı). Yüklemeyi kendi terminalinden yapman gerekiyor. Hazırlığın hepsi bitti; yalnızca iki komut kaldı.
+
+## 1. `party-league`'i yükle
+
+Uygulamadaki terminal panelinde (ya da Windows'ta PowerShell'de) şunu çalıştır:
+
+```bash
+cd C:\lazer-kafes; git push -u origin main
+```
+
+Bir **GitHub giriş penceresi** açılacak:
+- **Sign in with your browser**'ı seç.
+- Tarayıcıda **isikozguntopal** hesabıyla giriş yapıp **Authorize**'a bas.
+- Pencere kapanınca yükleme kendiliğinden tamamlanır.
+
+Tarayıcıda şirket GitHub hesabına otomatik giriş yapılmışsa önce ondan çıkış yap, sonra kişisel hesabınla gir.
+
+## 2. `claude-ekip`'i yükle
+
+```bash
+cd C:\gtechdev\claude-ekip; git push -u origin main
+```
+
+Giriş bir kez yapıldığı için bu sefer pencere çıkmaz.
+
+---
+
+İkisi bitince "yüklendi" yaz. GitHub'da iki deponun da doğru dosyalarla geldiğini kontrol edeceğim ve bir sonraki adıma (Apple Developer Program kaydı) geçeceğiz.
+
+Bir hata çıkarsa ekranda yazanı bana gönder. "Şirket ağı engelledi" gibi bir uyarı gelirse projeleri USB bellekle Mac'e taşıyıp oradan yükleriz.
+
+### 🧑 Kullanıcı · 08:38
+
+yüklendi
+
+**🤖 Claude · 08:38**
+
+Yüklemenin doğru gittiğini kontrol ediyorum.
+
+**🤖 Claude · 08:38**
+
+İkisi de doğru yüklendi; GitHub'daki son commit'ler bilgisayarındakilerle birebir aynı:
+- https://github.com/isikozguntopal/party-league
+- https://github.com/isikozguntopal/claude-ekip
+
+Mac'te ikisini indirmek için şu komutları kullanacaksın (şimdi gerek yok):
+
+```bash
+git clone https://github.com/isikozguntopal/party-league.git
+```
+
+```bash
+git clone https://github.com/isikozguntopal/claude-ekip.git
+```
+
+## Sıradaki adım: Apple Developer Program kaydı
+
+Onayı birkaç gün sürebildiği için erkenden başlamak iyi olur. Uygulamayı App Store'a ve TestFlight'a yükleyebilmek için bu üyelik şart; ücreti yıllık 99 USD.
+
+**Bireysel mi, şirket olarak mı?** Şimdilik **bireysel** kayıt öneriyorum. Hızlı onaylanır ve şirket kurman gerekmez; App Store'da satıcı olarak adın ("Özgün Topal") görünür. Şirket (organizasyon) kaydı için önce bir şirket ve D-U-N-S numarası gerekiyor; ileride geçiş yapılabilir.
+
+**Yapacakların:**
+1. Kişisel **Apple ID**'nde iki adımlı doğrulama açık olsun. iPhone'da Ayarlar → adın → Giriş ve Güvenlik altından bakabilirsin; genelde zaten açıktır. Şirketle ilgili bir Apple ID kullanma.
+2. iPhone'a App Store'dan **Apple Developer** uygulamasını indir.
+3. Uygulamayı aç, kişisel Apple ID'nle giriş yap, **Account** sekmesine geç ve **Enroll Now**'a dokun.
+4. Kimlik doğrulama adımında nüfus cüzdanının fotoğrafını çekmen istenebilir. Ad ve adres bilgilerini kimliğindeki gibi gir.
+5. Ödemeyi yap. Apple genelde 1–2 gün içinde onay e-postası gönderir.
+
+Kayıt formunu gönderince "gönderdim" yaz, sonraki adıma geçelim: alan adı ve isim kontrolü. Onay e-postasının gelmesini beklemene gerek yok.
+
+### 🧑 Kullanıcı · 08:40
+
+chat geçmişlerim de var mı bu git clone içersinde .
+
+macbooktam devam edince hatırlayacak mı her şeyi
+
+**🤖 Claude · 08:40**
+
+Evet, sohbet geçmişi depolarda var:
+- **party-league:** `docs/sohbet-gecmisi/oyun-gelistirme-sohbetleri.md` (oyunla ilgili bütün oturumlar)
+- **claude-ekip:** `docs/sohbet-gecmisi/claude-ekip-sohbetleri.md`
+
+**Mac'te her şeyi hatırlayacak mı?** Kendiliğinden hepsini hatırlamaz, ama doğru başlatırsan kaldığın yerden devam eder:
+- Mac'te projeyi açtığında Claude, depodaki **`CLAUDE.md`** dosyasını kendiliğinden okur. İçinde projenin yapısı, alınan kararlar, App Store yol haritası ve seninle nasıl çalışılacağı (Türkçe, adım adım) yazıyor. Temel bağlam bu sayede hazır gelir.
+- 150 KB'lık sohbet geçmişi dosyasını ise kendiliğinden okumaz; çok uzun olduğu için gerektiğinde bakar. İlk mesajında okumasını istemen en garantisi.
+- Bu bilgisayardaki Claude hafızası (iş notları vb.) Mac'e taşınmaz; oyun için zaten gerekmiyor.
+
+Bir eksik var: geçmiş dosyasını GitHub ve Apple adımlarından önce çıkarmıştım, yani son konuştuklarımız içinde yok. Dosyayı güncelliyorum ve `CLAUDE.md`'ye "şu an neredeyiz" bölümü ekliyorum; Mac'teki Claude tam olarak hangi adımda kaldığımızı bilsin.
+

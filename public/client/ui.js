@@ -56,7 +56,8 @@ export function createUI(ctx) {
 
   // ---------- Takımlar (takım oyunlarının başında: kim hangi takımda, herkes Tamam deyince başlar) ----------
   // Renk ve adlar oyun içindekilerle aynı (Halat: Mavi/Kırmızı; Kör Koşu ve Kayık: takım renk şeridi)
-  const TEAM_PAL = { kor: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308'], kayik: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6', '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'] };
+  const TEAM_COLORS = ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6'];
+  const TEAM_PAL = { melodi: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6'], tanir: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6'], kor: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308'], kayik: ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6', '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'] };
   function teamList(s) {
     const G = s.g, kind = s.kind;
     if (!G || !G.teams) return [];
@@ -84,6 +85,13 @@ export function createUI(ctx) {
         const mates = [...new Set(t.members)].filter((id) => id !== ctx.playerId).map(nameOf);
         html = `${esc(t.name.replace(' Takım', ''))}${mates.length ? ` · ${esc(mates.join(', '))}` : ''}`;
         color = t.color; sig = html + color;
+      }
+    }
+    if (!sig && s && s.status === 'playing' && !s.gate && s.tour && s.tour.teams) {
+      const ti = s.tour.teams.findIndex((t) => t.includes(ctx.playerId));
+      if (ti >= 0) {
+        const mates = s.tour.teams[ti].filter((id) => id !== ctx.playerId).map(nameOf);
+        html = `Takım ${ti + 1}${mates.length ? ` · ${esc(mates.join(', '))}` : ''}`; color = TEAM_COLORS[ti % TEAM_COLORS.length]; sig = html + color;
       }
     }
     if (sig === teamChipSig) return;
@@ -127,6 +135,20 @@ export function createUI(ctx) {
     const groups = standings(T);
     const max = Math.max(1, ...Object.values(T.scores));
     const lastRes = T.results[T.results.length - 1];
+    if (T.teamScoring && T.teams) {
+      // Takımlı turnuva: her satır bir takım (üyelerin puanı aynıdır)
+      const rows = T.teams.map((t, ti) => { const mem = t.filter((id) => id in T.scores); const id0 = mem[0]; return { ti, mem, now: id0 ? T.scores[id0] : 0, add: lastRes && prevScores && id0 ? lastRes.gained[id0] || 0 : 0 }; }).filter((r) => r.mem.length).sort((a, b) => b.now - a.now);
+      const tmax = Math.max(1, ...rows.map((r) => r.now));
+      return rows.map((r, i) => {
+        const place = rows.findIndex((x) => x.now === r.now) + 1, before = r.now - r.add, col = TEAM_COLORS[r.ti % TEAM_COLORS.length];
+        return `<div class="bar-row team" data-id="t${r.ti}">
+          <span class="rank">${place}.</span><span class="pslots">${r.mem.map((id) => `<span class="pslot" data-portrait="${esc(id)}" data-size="30"></span>`).join('')}</span>
+          <span class="tbody"><span class="bname">${r.mem.map((id) => esc(player(id).name)).join(' & ')}${r.mem.includes(ctx.playerId) ? ' (sen)' : ''}</span>
+          <span class="bar"><i style="width:${(before / tmax) * 100}%;background:${col}" data-to="${(r.now / tmax) * 100}"></i></span></span>
+          <b class="pts" data-from="${before}" data-to="${r.now}">${before}</b>${r.add ? `<span class="plus">+${r.add}</span>` : ''}
+        </div>`;
+      }).join('');
+    }
     let rank = 0;
     return groups.map((grp) => {
       const r = rank; rank += grp.length;
@@ -168,7 +190,7 @@ export function createUI(ctx) {
     const prev = {};
     for (const id of Object.keys(T.scores)) prev[id] = T.scores[id] - (res.gained[id] || 0);
     let pos = 0;
-    const podium = res.ranking.map((grp) => { const r = pos; pos += grp.length; return grp.map((id) => `<li><span>${MEDAL[r] || `${r + 1}.`}</span>${esc(nameOf(id))}<b>+${res.gained[id] || 0}</b></li>`).join(''); }).join('');
+    const podium = res.ranking.map((grp, gi) => { const r = res.places ? gi : pos; pos += grp.length; return grp.map((id) => `<li><span>${MEDAL[r] || `${r + 1}.`}</span>${esc(nameOf(id))}<b>+${res.gained[id] || 0}</b></li>`).join(''); }).join('');
     show(`
       <div class="score-card">
         <div class="score-head">${mod.EMOJI} ${esc(mod.TITLE)} bitti!</div>
@@ -193,16 +215,20 @@ export function createUI(ctx) {
     groups.forEach((grp, gi) => { const r = groups.slice(0, gi).reduce((n, x) => n + x.length, 0); for (const id of grp) flat.push({ id, r }); });
     const top = groups[0] || [];
     const single = T.list.length === 1;
-    const title = top.length > 1
+    const sameTeam = !!(T.teamScoring && T.teams && top.length > 1 && T.teams.some((t) => top.every((id) => t.includes(id))));
+    const title = top.length > 1 && !sameTeam
       ? `🤝 Berabere: ${top.map(nameOf).map(esc).join(' & ')}`
-      : `🏆 ${esc(nameOf(top[0]))}${top[0] === ctx.playerId ? ' (SEN!)' : ''} kazandı!`;
+      : sameTeam
+        ? `🏆 ${top.map(nameOf).map(esc).join(' & ')}${top.includes(ctx.playerId) ? ' (SİZ!)' : ''} kazandı!`
+        : `🏆 ${esc(nameOf(top[0]))}${top[0] === ctx.playerId ? ' (SEN!)' : ''} kazandı!`;
     const place = (r) => flat.filter((f) => f.r === r);
+    const rankIdx = (r) => (T.teamScoring ? [...new Set(flat.map((f) => f.r))].indexOf(r) : r);     // takımlı turnuvada 0,2,4 gibi değerler → 1.,2.,3.
     const spot = (r, cls) => {
       const list = place(r);
       if (!list.length) return `<div class="pod ${cls} empty"></div>`;
       return `<div class="pod ${cls}">
         <div class="pod-people">${list.map((f) => `<div class="pod-p"><span class="pslot" data-portrait="${esc(f.id)}" data-size="${r === 0 ? 76 : 60}"></span><div class="pod-name">${esc(nameOf(f.id))}</div><div class="pod-pts">${T.scores[f.id]} puan</div></div>`).join('')}</div>
-        <div class="pod-block"><span>${r + 1}</span></div>
+        <div class="pod-block"><span>${rankIdx(r) + 1}</span></div>
       </div>`;
     };
     // 2./3. sıralar beraberlikte kayabilir: ilk üç farklı sırayı bul
@@ -214,7 +240,7 @@ export function createUI(ctx) {
         <div class="final-sub">${single ? `${games()[T.list[0]].EMOJI} ${esc(games()[T.list[0]].TITLE)}` : '🏟️ Turnuva bitti'}</div>
         <h1 class="final-title">${title}</h1>
         <div class="podium">${spot(ranks[1] ?? 99, 'p2')}${spot(ranks[0] ?? 98, 'p1')}${spot(ranks[2] ?? 97, 'p3')}</div>
-        ${rest.length ? `<ol class="rest" start="4">${rest.map((f) => `<li>${f.r + 1}. ${esc(nameOf(f.id))} <b>${T.scores[f.id]}</b></li>`).join('')}</ol>` : ''}
+        ${rest.length ? `<ol class="rest" start="4">${rest.map((f) => `<li>${rankIdx(f.r) + 1}. ${esc(nameOf(f.id))} <b>${T.scores[f.id]}</b></li>`).join('')}</ol>` : ''}
         <button class="btn primary" data-uact="rematch">🔁 Tekrar oyna</button>
         <div class="row">${s.hostId === ctx.playerId ? '<button class="btn ghost" data-uact="lobby">Lobiye dön</button>' : ''}<button class="btn ghost" data-uact="home">Ana menü</button></div>
       </div>`, 'over');

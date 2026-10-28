@@ -14,14 +14,14 @@ export const RULES = [
 ];
 export const { realtime, PLACE_MS, init, normalize, auto, resolve, ranking, view } = realtimeServer();
 
-export const COLS = 11, ROWS = 13;
+export const COLS = 15, ROWS = 19;
 export const FUSE = 2.4, FLAME = 0.55, SUDDEN = 70, COLLAPSE_STEP = 0.3;
 const MAX_TIME = 150;
 const DIRS = [[0, -1, 'U'], [0, 1, 'D'], [-1, 0, 'L'], [1, 0, 'R']];
 export const idx = (r, c) => r * COLS + c;
 export const rc = (i) => [Math.floor(i / COLS), i % COLS];
 
-const SPAWNS = [[1, 1], [11, 9], [1, 9], [11, 1], [1, 5], [11, 5], [5, 1], [7, 9], [5, 9], [7, 1]];
+const SPAWNS = [[1, 1], [ROWS - 2, COLS - 2], [1, COLS - 2], [ROWS - 2, 1], [1, 7], [ROWS - 2, 7], [9, 1], [9, COLS - 2], [5, 7], [13, 7]];
 
 // Spiral kapanma sırası (dıştan içe)
 const SPIRAL = (() => {
@@ -46,7 +46,7 @@ export function createSim(players) {
   const clear = new Set();
   players.forEach((p, i) => {
     const [r, c] = SPAWNS[i % SPAWNS.length];
-    ps[p.id] = { id: p.id, bot: !!p.bot, x: c + 0.5, y: r + 0.5, dir: 'D', alive: true, range: 2, max: 1, speed: 3.2, deadAt: null, path: [], think: 0 };
+    ps[p.id] = { id: p.id, bot: !!p.bot, x: c + 0.5, y: r + 0.5, dir: 'D', alive: true, range: 1, max: 1, speed: 3.2, deadAt: null, path: [], think: 0 };
     for (const [dr, dc] of [[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0], [0, 2], [0, -2], [2, 0], [-2, 0]]) clear.add(idx(r + dr, c + dc));
   });
   const hidden = {};

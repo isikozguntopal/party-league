@@ -1,43 +1,38 @@
-// 🛶 Kayık Kafilesi — ikili takım, gerçek zamanlı nehir yarışı ("Fart Together" esintili)
-// Her takım bir kayığı paylaşır: biri SOL küreğe, biri SAĞ küreğe oturur. Kürek çekilen taraf ileri itilir:
-// yalnız sol çekerse kayık sağa, yalnız sağ çekerse sola döner; ikisi birlikte = düz ve hızlı.
-// Kürek darbeleri ritimlidir; iki taraf aynı anda başlarsa (senkron) ek hız gelir. 💨 gaz patlaması:
-// takım arkadaşları 0,3 sn içinde birlikte basarsa güçlü ve dümdüz bir itiş, tek başına basılırsa kayık fırıl döner.
+// 🛶 Kayık Kafilesi — ikili takım, gerçek zamanlı nehir yarışı (yuvarlak şamandıra kayık)
+// Her takım yuvarlak bir kayığı paylaşır; iki oyuncu kayığın DIŞ kenarında durur. Yön çubuğu yalnızca kenarın
+// neresinde duracağını seçer. GAZ düğmesine basılı tutunca karakter bulunduğu yerden gaz salar ve kayık
+// karakterin tersine (merkezden öbür yana) itilir. İki oyuncu aynı tarafta durup birlikte basarsa güçlü gider;
+// zıt taraflarda basarsanız birbirinizi sıfırlarsınız. Gaz deposu basılı tutunca boşalır, bırakınca dolar.
 // Parkur tohumdan (seed) üretilen bir nehirdir: virajlar, dar boğazlar, kayalar, sağa sola kayan kütükler,
 // girdaplar ve akıntılı bölgeler (rapids). Kıyılar katıdır. Sonunda şelale önünde bitiş kapısı vardır.
 //
 // Koordinatlar: nehir orta çizgisi DS aralıklı örneklerdir; (s, d) = (akış boyunca mesafe, yanal sapma; + = sol normal).
-// Dünya ekseni: x sağa, y aşağı (ekran gibi); h yönü atan2 açısıdır (h artınca saat yönünde = sağa döner).
+// Dünya ekseni: x sağa, y aşağı (ekran gibi); koltuk açısı a = atan2(y, x) dünya açısıdır.
 import { realtimeServer, pairUp } from './util.js';
 
 export const KIND = 'kayik';
 export const TITLE = 'Kayık Kafilesi';
 export const EMOJI = '🛶';
 export const RULES = [
-  'İkili takım, tek kayık: biri SOL, biri SAĞ kürekte. Kürek çeken taraf ileri gider — yalnız sol çekerse sağa, yalnız sağ çekerse sola dönersiniz.',
-  'İT\'e birlikte basın: aynı ritimde çekmek ekstra hız verir. Çubuğu aşağı çek = geri kürek, yana = hafif dümen.',
-  '💨 Gaz patlaması: ikiniz 0,3 sn içinde basarsanız roket gibi düz gider, tek başına basarsan kayık fırıl döner! Şelaleye ilk varan kazanır.',
+  'İkili takım, yuvarlak kayık: ikiniz de kayığın dış kenarında durursunuz. Yön çubuğuyla kenarda nerede duracağını seçersin.',
+  'GAZ düğmesine basılı tut: karakterin gaz salar ve kayık karşı yöne itilir. Gaz deposu basılı tutunca boşalır, bırakınca dolar.',
+  'Dikkat: kıyıya, kayaya ya da kütüğe sert çarparsanız kayık patlar ve son kontrol noktasında yeniden doğarsınız. Yavaş ve dikkatli gidin; şelaleye ilk varan kazanır!',
 ];
 const base = realtimeServer();
 export const { realtime, PLACE_MS, normalize, auto, resolve, ranking } = base;
 
 // ---------- Sabitler ----------
 export const DS = 0.5;
-export const HW = 3.0, HW_START = 3.5, HW_NARROW = 1.75, HW_POOL = 4.3, HW_MAX = 4.4;
-export const BOAT_L = 1.7, BOAT_W = 0.86;
-export const HULL_R = 0.42, HULL_OFF = 0.45;    // iki çarpışma dairesi: pruva/kıç
-export const SEAT = 0.32;                        // koltukların yanal uzaklığı (görsel)
+export const HW = 2.6, HW_START = 3.3, HW_NARROW = 1.6, HW_POOL = 4.3, HW_MAX = 4.4;
+export const BOAT_L = 1.9, BOAT_W = 1.9;       // yuvarlak kayığın çapı (görsel; avatarlar kenarda durur)
+export const HULL_R = 0.7, HULL_OFF = 0;       // tek çarpışma dairesi
+export const RAFT_R = 0.7;
 export const MAX_TIME = 180, AFTER_FIRST = 50, COUNTDOWN = 3;
-export const STROKE_T = 0.85;                    // kürek darbe periyodu (sn)
-export const BURST_CD = 5, SYNC_WIN = 0.3;
+export const GAS_F = 2.7, GAS_DRAIN = 0.5, GAS_REGEN = 0.42, GAS_MIN = 0.3, ROT_V = 7;   // gaz itişi, depo boşalma/dolma hızı, kenarda dönüş hızı (rad/sn)
 export const CP_EVERY = 30, STUCK_T = 7, INV_T = 1.6;
-export const CURRENT = 0.65, RAPID_EXTRA = 1.5;
-const PADDLE = 2.2;          // tek kürek ileri itişi (ivme)
-const BACK = 0.6;            // geri kürek oranı
-const ARM = 1.45;            // kürek → dönme (tork / itiş)
-const SWEEP = 1.3;           // çubukla dümen torku
-const ANG_DRAG = 2.6, LAT_DRAG = 3.5;
-const MASS_I = 0.32;         // eylemsizlik momenti (kütle = 1)
+export const CURRENT = 0.5, RAPID_EXTRA = 0.9;
+export const EXPLODE_V = 1.15, DEAD_T = 1.5;      // bundan sert çarpan kayık patlar ve son kontrol noktasında yeniden doğar
+const DRAG1 = 0.7, DRAG2 = 0.3;   // suyun sürtünmesi (doğrusal + karesel)
 
 // ---------- Rastgelelik / yardımcılar ----------
 export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -76,7 +71,7 @@ export function course(seed) {
 }
 
 function centerline(Rn) {
-  const target = 205 + Math.floor(Rn() * 30);
+  const target = 125 + Math.floor(Rn() * 20);
   const AMAX = 1.2, MIN_SEP = 2 * HW_MAX + 2.5;
   const px = [0], py = [0];
   let x = 0, y = 0, a = 0, s = 0, fails = 0;
@@ -142,7 +137,7 @@ function tryCourse(seed, Rn) {
   let sp = 20;
   while (sp < FIN - 12) {
     const r = Rn();
-    const kind = r < 0.34 ? 'rocks' : r < 0.52 ? 'log' : r < 0.67 ? 'whirl' : r < 0.82 ? 'rapids' : 'narrow';
+    const kind = r < 0.32 ? 'rocks' : r < 0.52 ? 'log' : r < 0.68 ? 'whirl' : r < 0.76 ? 'rapids' : 'narrow';
     const foot = { rocks: 2, log: 1.5, whirl: 6, rapids: 11 + Rn() * 4, narrow: 6 + Rn() * 3 }[kind];
     const cp = cps.find((v) => v > sp - 4 && v < sp + foot + 4);
     if (cp !== undefined) { sp = cp + 4; continue; }
@@ -167,7 +162,7 @@ function tryCourse(seed, Rn) {
         c.rocks.push({ s: s0 + k * 0.6 + Rn() * 0.4, d: clamp(d, -2.6, 2.6), r: rr });
       }
     }
-    sp += foot + 4 + Rn() * 4;
+    sp += foot + 2.6 + Rn() * 3;
   }
   // genişlik profili
   for (let i = 0; i < n; i++) {
@@ -181,7 +176,7 @@ function tryCourse(seed, Rn) {
   }
   // kaya ve girdaplar kıyıya gömülmesin; kütük genliği
   // kayık sıkışmasın: kaya-kıyı ve kaya-kaya arasında ya geçilebilir (≥1,4) ya da kapalı (≈0) aralık kalsın
-  const GAP = 1.4;
+  const GAP = 1.95;
   for (let it = 0; it < 3; it++) for (const rk of c.rocks) {
     const hw = widthAt(c, rk.s), gap = hw - Math.abs(rk.d) - rk.r;
     if (gap < GAP) rk.d = Math.sign(rk.d || 1) * (hw - rk.r + 0.15);
@@ -192,6 +187,7 @@ function tryCourse(seed, Rn) {
     }
   }
   for (const wh of c.whirls) { const hw = widthAt(c, wh.s); wh.d = clamp(wh.d, -hw + wh.r * 0.6, hw - wh.r * 0.6); }
+  c.logs = c.logs.filter((lg) => widthAt(c, lg.s) > 2.55);   // dar boğazda kütük olmaz (kayık geçemezdi)
   for (const lg of c.logs) lg.amp = Math.max(0.6, widthAt(c, lg.s) - lg.half - 0.45);
   // botlar için en iyi yol (statik engellerden kaçan yumuşak çizgi); yol yoksa parkur reddedilir
   if (!botLine(c)) return null;
@@ -204,11 +200,11 @@ function botLine(c) {
   const cost = new Float32Array(n * NJ), from = new Int16Array(n * NJ);
   const blocked = (i, d) => {
     const s = i * DS, hw = c.w[i];
-    if (Math.abs(d) > hw - 0.75) return Infinity;
+    if (Math.abs(d) > hw - 0.95) return Infinity;
     let pen = 0.02 * d * d;
-    for (const rk of c.rocks) { if (Math.abs(rk.s - s) > 3) continue; const dist = Math.hypot(rk.s - s, rk.d - d) - rk.r; if (dist < 0.68) return Infinity; pen += 1.2 / (0.3 + dist); }
-    for (const wh of c.whirls) { if (Math.abs(wh.s - s) > 4) continue; const dist = Math.hypot(wh.s - s, wh.d - d) - wh.r; if (dist < 0.45) return Infinity; pen += 1 / (0.4 + dist); }
-    pen += 0.6 / (0.2 + hw - Math.abs(d) - 0.75);
+    for (const rk of c.rocks) { if (Math.abs(rk.s - s) > 3) continue; const dist = Math.hypot(rk.s - s, rk.d - d) - rk.r; if (dist < 0.92) return Infinity; pen += 1.2 / (0.3 + dist); }
+    for (const wh of c.whirls) { if (Math.abs(wh.s - s) > 4) continue; const dist = Math.hypot(wh.s - s, wh.d - d) - wh.r; if (dist < 0.6) return Infinity; pen += 1 / (0.4 + dist); }
+    pen += 0.6 / (0.2 + hw - Math.abs(d) - 0.95);
     return pen;
   };
   for (let j = 0; j < NJ; j++) { const v = blocked(0, (j - M) * STEP); cost[j] = v; from[j] = j; }
@@ -302,120 +298,68 @@ export function createSim(players, g) {
     return {
       id: t.id, members: t.members.slice(), bots,
       x: p.x, y: p.y, h: Math.atan2(f.ty, f.tx), vx: 0, vy: 0, w: 0, s, d,
-      seats: [0, 1].map(() => ({ mode: 0, ph: 0, idle: 1, cd: 0, sweep: 0, wantSync: 0 })),
-      pend: null, bfx: 0, bsync: 0, sync: 0, done: null, inv: 0, cp: 0, bestS: s, progT: 0, hint: 0, hits: 0,
-      skill: 0.95 + R() * 0.05, plan: null, planT: -1, joinAt: null,
+      // koltuk: a = kenardaki konum (dünya açısı; başlangıçta arka yarım: akış yönüne itmek için), gas = basıyor mu, tank = gaz deposu (0..1)
+      seats: [0, 1].map((k) => ({ a: Math.atan2(f.ty, f.tx) + Math.PI + (k === 0 ? -0.45 : 0.45), gas: 0, tank: 1, lock: false, rest: 0 })),
+      done: null, inv: 0, cp: 0, bestS: s, progT: 0, hits: 0, push: 0, dead: 0,
+      skill: 0.95 + R() * 0.05, plan: null, planT: -1,
     };
   });
   return { t: 0, phase: 'wait', cd: COUNTDOWN, el: 0, seed, c, boats, firstDone: null, events: [] };
 }
 export const startCountdown = (sim) => { if (sim.phase === 'wait') { sim.phase = 'count'; sim.cd = COUNTDOWN; } };
 
-// Oyuncu kumandası → koltuk komutu. inp: { push, y, x, bomb }
+// Oyuncu kumandası → koltuk komutu. inp: { x, y, push } (x,y = çubuğun dünya yönü; push = gaz)
 function seatCmd(inp) {
   inp = inp || {};
-  const y = inp.y || 0;
-  const mode = inp.push || y < -0.5 ? 1 : y > 0.5 ? -1 : 0;
-  const x = inp.x || 0;
-  return { mode, sweep: Math.abs(x) > 0.2 ? clamp(x, -1, 1) : 0, burst: !!inp.bomb };
+  const x = inp.x || 0, y = inp.y || 0, L = Math.hypot(x, y);
+  return { ta: L > 0.25 ? Math.atan2(y, x) : null, gas: !!inp.push };
 }
 
-function hullPts(b) {
-  const fx = Math.cos(b.h), fy = Math.sin(b.h);
-  return [[b.x + fx * HULL_OFF, b.y + fy * HULL_OFF, HULL_OFF], [b.x - fx * HULL_OFF, b.y - fy * HULL_OFF, -HULL_OFF]];
-}
-// nokta (px,py)'de normal n yönünde çarpışma itkisi; (ovx,ovy) = engelin hızı
+function hullPts(b) { return [[b.x, b.y, 0]]; }
+// nokta (px,py)'de normal n yönünde çarpışma itkisi; (ovx,ovy) = engelin hızı. Yuvarlak kayık: dönme yok
 function impulse(b, px, py, nx, ny, e, ovx = 0, ovy = 0) {
-  const rx = px - b.x, ry = py - b.y;
-  const vpx = b.vx - b.w * ry - ovx, vpy = b.vy + b.w * rx - ovy;
-  const vn = vpx * nx + vpy * ny;
+  const vn = (b.vx - ovx) * nx + (b.vy - ovy) * ny;
   if (vn >= 0) return 0;
-  const rn = rx * ny - ry * nx;
-  const j = -(1 + e) * vn / (1 + (rn * rn) / MASS_I);
-  b.vx += nx * j; b.vy += ny * j; b.w += (rn * j) / MASS_I;
-  // sürtünme: teğetsel hız biraz azalır
-  const tx = -ny, ty = nx, vt = vpx * tx + vpy * ty;
-  b.vx -= tx * vt * 0.12; b.vy -= ty * vt * 0.12;
+  const j = -(1 + e) * vn;
+  b.vx += nx * j; b.vy += ny * j;
+  const tx = -ny, ty = nx, vt = (b.vx - ovx) * tx + (b.vy - ovy) * ty;
+  b.vx -= tx * vt * 0.1; b.vy -= ty * vt * 0.1;
   return -vn;
 }
 
 function stepBoat(sim, b, inputs, dt) {
   const c = sim.c;
   const racing = sim.phase === 'race' && b.done === null;
-  const el = sim.el;
   // koltuk komutları
   const cmds = [0, 1].map((k) => (b.bots[k] ? botSeat(sim, b, k) : seatCmd(inputs[b.members[k]])));
-  let F = 0, tq = 0;
+  let Fx = 0, Fy = 0, n = 0;
   for (let k = 0; k < 2; k++) {
-    const st = b.seats[k], cm = racing ? cmds[k] : { mode: 0, sweep: 0, burst: false };
-    if (cm.mode === 1 && st.mode !== 1 && st.idle > 0.3) {
-      // yeni darbe dizisi: baştan başlar; bot ise arkadaşının ritmine uyar
-      const o = b.seats[1 - k];
-      st.ph = b.bots[k] && o.mode === 1 ? o.ph : 0;
-    }
-    st.mode = cm.mode; st.sweep = cm.sweep;
-    if (st.mode === 0) st.idle += dt; else st.idle = 0;
-    if (st.mode !== 0) st.ph = (st.ph + dt / STROKE_T) % 1;
-    if (st.cd > 0) st.cd = Math.max(0, st.cd - dt);
-    if (cm.burst && racing && st.cd <= 0) {
-      st.cd = BURST_CD;
-      if (b.pend && b.pend.seat !== k && el - b.pend.t <= SYNC_WIN) {
-        // senkron gaz patlaması: güçlü ve düz
-        const fx = Math.cos(b.h), fy = Math.sin(b.h);
-        b.vx += fx * 4.2; b.vy += fy * 4.2; b.w *= 0.25;
-        b.pend = null; b.bfx = 0.9; b.bsync = 1;
-        sim.events.push({ e: 'burst', team: b.id, sync: 1, x: b.x, y: b.y });
-      } else if (!b.pend) b.pend = { seat: k, t: el };
-    }
+    const st = b.seats[k], cm = cmds[k];
+    // kenarda konum: çubuğun gösterdiği yöne hızla dön
+    if (cm.ta !== null && cm.ta !== undefined) { const d = angN(cm.ta - st.a), step = ROT_V * dt; st.a = angN(st.a + clamp(d, -step, step)); }
+    // gaz deposu
+    if (st.rest > 0) st.rest -= dt;
+    const want = !!cm.gas && racing;
+    const can = want && st.tank > 0.01 && !st.lock;
+    if (can) { st.tank = Math.max(0, st.tank - GAS_DRAIN * dt); st.rest = 0.35; if (st.tank <= 0.01) st.lock = true; }
+    else if (st.rest <= 0) { st.tank = Math.min(1, st.tank + GAS_REGEN * dt); if (st.lock && st.tank >= GAS_MIN) st.lock = false; }
+    st.gas = can ? 1 : 0;
+    if (can) { const f = GAS_F * (b.bots[k] ? b.skill : 1); Fx -= Math.cos(st.a) * f; Fy -= Math.sin(st.a) * f; n++; }
   }
-  // bot arkadaş insanın gazına katılır
-  if (b.pend && b.joinAt !== null && el >= b.joinAt) {
-    const k = 1 - b.pend.seat;
-    b.joinAt = null;
-    if (b.bots[k] && b.seats[k].cd <= 0) {
-      b.seats[k].cd = BURST_CD;
-      const fx = Math.cos(b.h), fy = Math.sin(b.h);
-      b.vx += fx * 4.2; b.vy += fy * 4.2; b.w *= 0.25;
-      b.pend = null; b.bfx = 0.9; b.bsync = 1;
-      sim.events.push({ e: 'burst', team: b.id, sync: 1, x: b.x, y: b.y });
-    }
-  }
-  if (b.pend && el - b.pend.t > SYNC_WIN) {
-    // tek başına gaz: az ileri, çok dönme
-    const fx = Math.cos(b.h), fy = Math.sin(b.h), sg = b.pend.seat === 0 ? 1 : -1;
-    b.vx += fx * 1.4; b.vy += fy * 1.4; b.w += sg * 5.2;
-    sim.events.push({ e: 'burst', team: b.id, sync: 0, seat: b.pend.seat, x: b.x, y: b.y });
-    b.pend = null; b.bfx = 0.7; b.bsync = 0;
-  }
-  if (b.bfx > 0) b.bfx = Math.max(0, b.bfx - dt);
-  const both = b.seats[0].mode === 1 && b.seats[1].mode === 1;
-  b.sync = both ? Math.cos(TAU * (b.seats[0].ph - b.seats[1].ph)) : 0;
-  const bonus = 1 + 0.28 * Math.max(0, b.sync);
-  for (let k = 0; k < 2; k++) {
-    const st = b.seats[k];
-    let T = 0;
-    if (st.mode === 1) T = PADDLE * (1 + 0.55 * Math.sin(TAU * st.ph)) * (both ? bonus : 1);
-    else if (st.mode === -1) T = -PADDLE * BACK;
-    T *= b.bots[k] ? b.skill : 1;
-    F += T;
-    tq += (k === 0 ? 1 : -1) * ARM * T;
-    tq += st.sweep * SWEEP;
-  }
-  if (!racing && sim.phase !== 'race') { b.vx = b.vy = b.w = 0; return; } // geri sayım: kayıklar bekler
-  // su
+  // aynı tarafta birlikte basmak küçük bir bonus verir (itişler zaten toplanır)
+  if (n === 2) { const d = Math.cos(angN(b.seats[0].a - b.seats[1].a)); if (d > 0.6) { Fx *= 1.1; Fy *= 1.1; } }
+  b.push = Math.hypot(Fx, Fy) / GAS_F;
+  if (sim.phase !== 'race') { b.vx = b.vy = b.w = 0; return; } // geri sayım: kayıklar bekler
+  // su: akıntıya göre sürtünme
   const wt = water(c, b.s, b.d, b.x, b.y);
-  const fx = Math.cos(b.h), fy = Math.sin(b.h), lx = fy, ly = -fx;
-  const rvx = b.vx - wt.vx, rvy = b.vy - wt.vy;
-  const vf = rvx * fx + rvy * fy, vl = rvx * lx + rvy * ly;
-  const done = b.done !== null;
-  const af = -(0.4 + 0.25 * Math.abs(vf) + (done ? 2 : 0)) * vf + F;
-  const al = -LAT_DRAG * vl;
-  b.vx += (fx * af + lx * al) * dt; b.vy += (fy * af + ly * al) * dt;
-  b.w += (tq + wt.spin - ANG_DRAG * b.w) * dt;
-  b.x += b.vx * dt; b.y += b.vy * dt; b.h = angN(b.h + b.w * dt);
+  const rvx = b.vx - wt.vx, rvy = b.vy - wt.vy, rv = Math.hypot(rvx, rvy);
+  const dr = DRAG1 + DRAG2 * rv + (b.done !== null ? 2 : 0);
+  b.vx += (Fx - dr * rvx) * dt; b.vy += (Fy - dr * rvy) * dt;
+  b.x += b.vx * dt; b.y += b.vy * dt;
   // konum (s, d)
   const loc = locate(c, b.x, b.y, b.s);
   b.s = loc.s; b.d = loc.d;
+  b.h = Math.atan2(frame(c, b.s).ty, frame(c, b.s).tx);   // görsel yön: akış yönü
   collideStatic(sim, b);
 }
 
@@ -462,7 +406,11 @@ function collideStatic(sim, b) {
       hit = Math.max(hit, impulse(b, hx, hy, nx, ny, 0.4, f.nx * lv, f.ny * lv));
     }
   }
-  if (hit > 0.9 && b.done === null) { b.hits++; sim.events.push({ e: 'bump', team: b.id, x: b.x, y: b.y, k: Math.min(3, Math.round(hit)) }); }
+  if (hit > EXPLODE_V && b.done === null && b.inv <= 0 && !b.dead) {
+    // sert çarpma: kayık patlar, son kontrol noktasında yeniden doğar
+    b.hits++; b.dead = DEAD_T; b.vx = b.vy = 0;
+    sim.events.push({ e: 'boom', team: b.id, x: b.x, y: b.y });
+  } else if (hit > 0.9 && b.done === null) { b.hits++; sim.events.push({ e: 'bump', team: b.id, x: b.x, y: b.y, k: Math.min(3, Math.round(hit)) }); }
 }
 
 function collideBoats(sim) {
@@ -479,9 +427,6 @@ function collideBoats(sim) {
       if (vn < 0) {
         const jj = -vn * 0.65;
         a.vx -= nx * jj; a.vy -= ny * jj; b.vx += nx * jj; b.vy += ny * jj;
-        // çarpışma noktası dönmeye de etki eder
-        const ra = (ax - a.x) * ny - (ay - a.y) * nx, rb = (bx - b.x) * ny - (by - b.y) * nx;
-        a.w -= ra * jj * 0.8; b.w += rb * jj * 0.8;
         if (-vn > 1) sim.events.push({ e: 'bump', team: a.id, x: (ax + bx) / 2, y: (ay + by) / 2, k: 1 });
       }
     }
@@ -492,7 +437,7 @@ function respawn(sim, b) {
   const c = sim.c, s = Math.max(4, checkpointS(c, b.bestS) + 1), d = lineAt(c, s);
   const p = world(c, s, d), f = frame(c, s);
   b.x = p.x; b.y = p.y; b.h = Math.atan2(f.ty, f.tx); b.vx = b.vy = b.w = 0; b.s = s; b.d = d;
-  b.inv = INV_T; b.progT = sim.el; b.bestS = s; b.pend = null; b.revT = 0; b.slowT = 0;
+  b.inv = INV_T; b.progT = sim.el; b.bestS = s; b.revT = 0; b.slowT = 0; for (const st of b.seats) { st.tank = 1; st.lock = false; st.gas = 0; }
   sim.events.push({ e: 'respawn', team: b.id, x: p.x, y: p.y });
 }
 
@@ -509,6 +454,7 @@ export function stepSim(sim, dt, inputs) {
   if (sim.phase === 'done') return sim.events;
   for (const b of sim.boats) {
     if (b.inv > 0) b.inv = Math.max(0, b.inv - dt);
+    if (b.dead > 0) { b.dead -= dt; b.vx = b.vy = 0; if (b.dead <= 0) { b.dead = 0; respawn(sim, b); } continue; }   // patlamış kayık: yeniden doğmayı bekler
     stepBoat(sim, b, inputs, dt);
   }
   if (sim.phase !== 'race') return sim.events;
@@ -526,7 +472,7 @@ export function stepSim(sim, dt, inputs) {
       sim.events.push({ e: 'finish', team: b.id, place: sim.boats.filter((o) => o.done !== null).length, x: b.x, y: b.y });
     } else if (sim.el - b.progT > STUCK_T) respawn(sim, b);
   }
-  if (sim.boats.every((b) => b.done !== null) || sim.el > MAX_TIME || (sim.firstDone !== null && sim.el - sim.firstDone > AFTER_FIRST)) {
+  if (sim.boats.every((b) => b.done !== null) || sim.el > MAX_TIME || (sim.boats.length > 2 && sim.boats.filter((b) => b.done !== null).length >= 2) || (sim.firstDone !== null && sim.el - sim.firstDone > AFTER_FIRST)) {
     sim.phase = 'done'; sim.events.push({ e: 'done' });
   }
   return sim.events;
@@ -536,11 +482,13 @@ export function standings(boats) {
   const key = (b) => (b.done !== null ? b.done - 1e6 : -b.s);
   return boats.slice().sort((a, b) => key(a) - key(b));
 }
+// bitirememiş kayıkların oyuncuları (iki kayık bitirince oyun kapanır; kalanlar eksi puan alır)
+export const dnfOf = (sim) => (sim.boats.some((b) => b.done !== null) ? sim.boats.filter((b) => b.done === null).flatMap((b) => b.members.filter((id, i, a) => a.indexOf(id) === i)) : []);
 export const rankingOf = (sim) => standings(sim.boats).map((b) => b.members.filter((id, i, a) => a.indexOf(id) === i));
 
-// ---------- Bot kürekçi ----------
-// Takım planı: bot çizgisini (statik engellerden kaçan) izler; yön hatasına göre hangi kürek çekecek.
-// Kütük yaklaşırken çarpışma tahmini varsa geri kürek çekip bekler. Düzlükte gazı birlikte basar.
+// ---------- Bot oyuncu ----------
+// Takım planı: bot çizgisini (statik engellerden kaçan) izler; gitmek istediği yönün TERSİNE (kenarda) durup gaz basar.
+// Kütük yaklaşırken çarpışma tahmini varsa gazı keser ve bekler. İki bot yan yana (±) durur.
 function teamPlan(sim, b) {
   if (b.planT === sim.t) return b.plan;
   const c = sim.c, el = sim.el;
@@ -554,56 +502,43 @@ function teamPlan(sim, b) {
     const ahead = lg.s - b.s, vgo = Math.max(1.8, sp), hw = widthAt(c, lg.s);
     const tA = Math.max(0, (ahead - 1.1) / vgo), tB = Math.max(tA + 0.3, (ahead + 1.1) / vgo);
     let best = null, bestC = -Infinity;
-    for (const d of [-(hw - 0.95), -(hw - 0.95) / 2, 0, (hw - 0.95) / 2, hw - 0.95]) {
+    for (const d of [-(hw - 1.1), -(hw - 1.1) / 2, 0, (hw - 1.1) / 2, hw - 1.1]) {
       let cl = Infinity;
       for (let q = 0; q <= 8; q++) { const tt = tA + (tB - tA) * (q / 8); cl = Math.min(cl, Math.abs(logD(lg, el + tt) - d) - lg.half); }
       cl -= Math.abs(d - b.d) * 0.12; // yakın olanı tercih et
       if (cl > bestC) { bestC = cl; best = d; }
     }
     logTarget = { s: lg.s, d: best };
-    if (bestC < 0.62 && ahead > 1.3) hold = true;
+    if (bestC < 0.7 && ahead > 1.3) hold = true;
   }
   const td = logTarget && st < logTarget.s + 2 ? logTarget.d : lineAt(c, st);
   const tp = world(c, st, td);
-  const e = angN(Math.atan2(tp.y - b.y, tp.x - b.x) - b.h);
-  const wd = clamp(2.4 * e, -1.7, 1.7), u = wd - b.w;
-  let L = 1, Rm = 1, sweep = clamp(u * 1.2, -1, 1);
-  if (u > 0.55) { Rm = u > 1.5 ? -1 : 0; } else if (u < -0.55) { L = u < -1.5 ? -1 : 0; }
-  if (hold) {
-    // yerinde dur: akıntıya karşı hafif geri kürek, yönü dümenle koru
+  let phi = Math.atan2(tp.y - b.y, tp.x - b.x);
+  // takıldıysa (gaz basıyor ama ilerlemiyor) bir an akıntıya bırak ve yön değiştir
+  const dt0 = b.planT < 0 ? 0 : sim.t - b.planT;
+  if (!hold && sp < 0.35) b.slowT = (b.slowT || 0) + dt0; else b.slowT = 0;
+  if (b.slowT > 1.4) { b.revT = 0.8 + Math.random() * 0.5; b.slowT = 0; b.revDir = (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.8); }
+  if (b.revT > 0) { b.revT -= dt0; phi += b.revDir; }
+  if (hold) {                                   // kütük geçişini bekle: akıntıya karşı (yukarı akışa) gaz verip durdur
     const f = frame(c, b.s), vdown = b.vx * f.tx + b.vy * f.ty;
-    L = Rm = vdown > 0.1 ? -1 : 0;
+    phi = Math.atan2(-f.ty, -f.tx);
+    b.plan = { phi, hold: false, brake: vdown > -0.05 };
+    b.planT = sim.t;
+    return b.plan;
   }
-  // takıldıysa (kürek çekiyor ama ilerlemiyor) bir an geri çekil
-  if (!hold && sp < 0.35) b.slowT = (b.slowT || 0) + (sim.t - (b.planT < 0 ? sim.t : b.planT)); else b.slowT = 0;
-  if (b.slowT > 1.2) { b.revT = 0.9 + Math.random() * 0.4; b.slowT = 0; }
-  if (b.revT > 0) { b.revT -= sim.t - (b.planT < 0 ? sim.t : b.planT); L = Rm = -1; }
-  // gaz: önümüz düz ve boşsa
-  let burst = false;
-  if (!hold && Math.abs(e) < 0.12 && Math.abs(b.w) < 0.3 && b.s > 14) {
-    let clear = true;
-    for (let q = 2; q <= 12 && clear; q += 2) { const s2 = b.s + q; if (Math.abs(lineAt(c, s2) - lineAt(c, b.s)) > 0.7 || widthAt(c, s2) < 2.2) clear = false; }
-    if (clear) clear = !c.logs.some((lg) => lg.s > b.s && lg.s < b.s + 12) && !c.rocks.some((rk) => rk.s > b.s && rk.s < b.s + 10) && !c.whirls.some((w) => w.s > b.s - 2 && w.s < b.s + 10);
-    burst = clear;
-  }
-  b.plan = { L, R: Rm, sweep, burst, hold };
+  b.plan = { phi, hold: false };
   b.planT = sim.t;
   return b.plan;
 }
 export function botSeat(sim, b, k) {
-  if (sim.phase !== 'race' || b.done !== null) return { mode: 0, sweep: 0, burst: false };
+  if (sim.phase !== 'race' || b.done !== null) return { ta: null, gas: false };
   const pl = teamPlan(sim, b), other = 1 - k;
-  const mode = k === 0 ? pl.L : pl.R;
-  // insan arkadaşa ipucu: onun koltuğu ne yapmalı
-  if (!b.bots[other]) b.hint = (other === 0 ? pl.L : pl.R) === 1 ? 1 : (other === 0 ? pl.L : pl.R) === -1 ? 2 : 3;
-  // arkadaş insan ve gaz bekliyorsa katıl
-  if (b.pend && b.pend.seat === other && !b.bots[other] && b.joinAt === null) b.joinAt = sim.el + 0.06 + Math.random() * 0.14;
-  // gazı yalnızca ikisi de botsa bot başlatır (aynı adımda ikisi de basar → senkron)
-  const burst = pl.burst && b.bots[other] && b.seats[0].cd <= 0 && b.seats[1].cd <= 0;
-  // ritim: ikisi de çekiyorsa arkadaşının fazına yaklaş
-  const st = b.seats[k], o = b.seats[other];
-  if (mode === 1 && st.mode === 1 && o.mode === 1) { const dph = angN(TAU * (o.ph - st.ph)) / TAU; st.ph = (st.ph + dph * 0.08 + 1) % 1; }
-  return { mode, sweep: pl.sweep * 0.5, burst };
+  // duracağı yer: gitmek istediği yönün tersi; iki bot ise iki yanda (±), insan arkadaş varsa tam arkada
+  const off = b.bots[other] ? (k === 0 ? -0.5 : 0.5) : 0;
+  const ta = pl.phi + Math.PI + off;
+  const st = b.seats[k];
+  const aligned = Math.abs(angN(st.a - ta)) < 0.45;
+  return { ta, gas: aligned && (pl.brake === undefined || pl.brake) };
 }
 
 // ---------- Ağ: anlık görüntü ----------
@@ -613,17 +548,17 @@ export function snapshot(sim) {
   return {
     t: r2(sim.t), ph: sim.phase, cd: r2(sim.cd), el: r2(sim.el), sd: sim.seed,
     b: sim.boats.map((b) => [b.id, r2(b.x), r2(b.y), r2(b.h), r2(b.s), b.done === null ? -1 : r2(b.done), r1(b.inv), b.cp,
-      b.seats[0].mode, r2(b.seats[0].ph), r1(b.seats[0].cd), b.seats[1].mode, r2(b.seats[1].ph), r1(b.seats[1].cd),
-      r1(Math.hypot(b.vx, b.vy)), r1(b.sync), b.hint, r1(b.bfx), b.bsync, r1(b.w), b.hits, b.pend ? b.pend.seat : -1]),
+      r2(b.seats[0].a), b.seats[0].gas, r2(b.seats[0].tank), r2(b.seats[1].a), b.seats[1].gas, r2(b.seats[1].tank),
+      r1(Math.hypot(b.vx, b.vy)), r1(b.push), b.hits, r1(b.dead)]),
     ev: sim.events,
   };
 }
 export function readSnapshot(s) {
   return {
     t: s.t, phase: s.ph, cd: s.cd, el: s.el, seed: s.sd,
-    boats: s.b.map(([id, x, y, h, sv, done, inv, cp, m0, p0, c0, m1, p1, c1, sp, sync, hint, bfx, bsync, w, hits, pend]) => ({
-      id, x, y, h, s: sv, done: done < 0 ? null : done, inv, cp, sp, sync, hint, bfx, bsync, w, hits, pend,
-      seats: [{ mode: m0, ph: p0, cd: c0 }, { mode: m1, ph: p1, cd: c1 }],
+    boats: s.b.map(([id, x, y, h, sv, done, inv, cp, a0, g0, k0, a1, g1, k1, sp, push, hits, dead]) => ({
+      id, x, y, h, s: sv, done: done < 0 ? null : done, inv, cp, sp, push, w: 0, hits, dead: dead || 0,
+      seats: [{ a: a0, gas: g0, tank: k0 }, { a: a1, gas: g1, tank: k1 }],
     })),
     events: s.ev || [],
   };

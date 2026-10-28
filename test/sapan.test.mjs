@@ -17,7 +17,7 @@ ok('Kimlik: KIND lazer kaldı, başlık/emoji/kurallar sapana göre');
 // ---------- Alan ölçeği ----------
 assert.equal(L.arenaScale(1), 1);
 for (let r = 2; r <= 40; r++) assert.ok(L.arenaScale(r) <= L.arenaScale(r - 1));
-for (let r = 2; r <= 15; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
+for (let r = 2; r <= 10; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
 assert.equal(L.arenaScale(60), L.MIN_SCALE);
 ok('Alan ölçeği: azalan, tabanı MIN_SCALE');
 

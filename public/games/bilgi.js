@@ -3,7 +3,14 @@
 // 2) Kazanan kategoriden 4 soru. 3) O an sonuncu olan oyuncu kalan 4 sorunun konusunu seçer.
 // Her soru 15 sn; doğru cevap 500–1000 puan. Jokerler oyun boyunca birer kez kullanılır.
 import { GameError, shuffle } from './util.js';
-import { SORULAR, DIZI, BILIM, TARIH, INSAN, KELIME } from './sorular.js';
+import DIZI from './sorular/dizi.js';
+import BILIM from './sorular/bilim.js';
+import TARIH from './sorular/tarih.js';
+import INSAN from './sorular/insan.js';
+import KELIME from './sorular/kelime.js';
+import GENEL from './sorular/genel.js';
+import SPOR from './sorular/spor.js';
+import COGRAFYA from './sorular/cografya.js';
 
 export const KIND = 'bilgi';
 export const TITLE = 'Bil Bakalım';
@@ -19,7 +26,9 @@ export const CATS = [
   { id: 'tarih', emoji: '🏛️', title: 'Tarih Yolculuğu', qs: TARIH },
   { id: 'insan', emoji: '🧬', title: 'İnsan ve Evrim', qs: INSAN },
   { id: 'kelime', emoji: '🔤', title: 'Deyimler & Kelimeler', qs: KELIME },
-  { id: 'genel', emoji: '🌍', title: 'Genel Kültür', qs: SORULAR },
+  { id: 'genel', emoji: '🌍', title: 'Genel Kültür', qs: GENEL },
+  { id: 'spor', emoji: '⚽', title: 'Spor & Oyun', qs: SPOR },
+  { id: 'cografya', emoji: '🗺️', title: 'Coğrafya & Gezi', qs: COGRAFYA },
 ];
 // Jokerler: herkeste baştan var, oyun boyunca birer kez kullanılır
 export const JOKERS = {
@@ -102,9 +111,9 @@ export function auto(d, pid, bot) {
 export const points = (t) => Math.round(1000 - 500 * Math.min(1, t / PLACE_MS));
 
 function pickQuestions(catId, n) {
-  const cat = CATS.find((c) => c.id === catId) || CATS[5];
+  const cat = CATS.find((c) => c.id === catId) || CATS[CATS.length - 1];
   let pool = shuffle(cat.qs.map((q) => q));
-  if (pool.length < n) pool = pool.concat(shuffle(SORULAR).slice(0, n - pool.length));
+  if (pool.length < n) pool = pool.concat(shuffle(CATS.flatMap((c) => c.qs)).slice(0, n - pool.length));
   return pool.slice(0, n).map(([q, ...opts]) => {
     const order = shuffle([0, 1, 2, 3]);
     return { q, o: order.map((k) => opts[k]), c: order.indexOf(0) };

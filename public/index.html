@@ -56,30 +56,28 @@
         <label class="field grow"><span>Adın</span>
           <input id="name" maxlength="14" placeholder="Oyuncu" autocomplete="off" spellcheck="false">
         </label>
-        <button class="btn small ghost" data-custom>👕 Karakterim</button>
       </div>
 
-      <div class="actions">
-        <button id="btnCreate" class="btn primary big">🏟️ Oda Kur</button>
-        <div class="row">
+      <div class="menu3">
+        <button id="btnCreate" class="tile t1"><span class="ti">🏟️</span><b>Oda Kur</b><small>Arkadaşlarını çağır, oyunları seç</small></button>
+        <button id="btnJoinToggle" class="tile t2"><span class="ti">🔑</span><b>Odaya Katıl</b><small>Arkadaşının verdiği kodu gir</small></button>
+        <div id="joinRow" class="join-row hidden">
           <input id="joinCode" class="code-input" maxlength="4" placeholder="KOD" autocomplete="off" autocapitalize="characters" spellcheck="false">
-          <button id="btnJoin" class="btn">Odaya Katıl</button>
+          <button id="btnJoin" class="btn primary">Katıl</button>
         </div>
-        <div class="row solo-row">
-          <button id="btnSolo" class="btn ghost grow">🤖 Botlarla Oyna</button>
-          <div class="stepper" aria-label="bot sayısı">
-            <button data-step="-1" aria-label="azalt">−</button>
-            <b id="botN">3</b>
-            <button data-step="1" aria-label="artır">+</button>
-          </div>
-        </div>
+        <button class="tile t3" data-custom><span class="ti">👕</span><b>Karakterim</b><small>Giydir, renklerini değiştir</small></button>
       </div>
 
-      <section class="games-sec">
-        <div class="sec-head"><h2>Oyunlar</h2><span class="muted">dokun: nasıl oynanır?</span></div>
-        <div id="homeGames" class="game-grid"></div>
-        <p class="muted small-note">Takım oyunlarında (🧨 🏃 🪢) oyuncular eşit takımlara bölünür; sayı tutmazsa yedek bot eklenir. Gerçek zamanlı oyunlarda telefonlar birbirine doğrudan bağlanır; oyunu oda sahibinin telefonu yönetir.</p>
-      </section>
+      <!-- geliştirici: botlarla yerel oyun (adrese ?bot ya da ?cizim eklenince görünür) -->
+      <div class="row solo-row dev-only hidden">
+        <button id="btnSolo" class="btn ghost grow">🤖 Botlarla Oyna</button>
+        <div class="stepper" aria-label="bot sayısı">
+          <button data-step="-1" aria-label="azalt">−</button>
+          <b id="botN">3</b>
+          <button data-step="1" aria-label="artır">+</button>
+        </div>
+      </div>
+      <section class="games-sec hidden"><div id="homeGames" class="game-grid"></div></section>
     </section>
 
     <!-- Karakter -->
@@ -88,7 +86,6 @@
         <h2>👕 Karakterim</h2>
         <div class="row">
           <button id="btnSpin" class="btn small ghost on">🔄 Döndür: Açık</button>
-          <button id="btnRandomLook" class="btn small">🎲 Rastgele</button>
         </div>
       </div>
       <div class="custom-stage">
@@ -97,6 +94,11 @@
       </div>
       <div id="customTabs" class="ctabs"></div>
       <div id="customOpts" class="custom-opts"></div>
+      <div class="gen-bar">
+        <button id="btnGenM" class="btn gen">👨 Erkek<small>rastgele</small></button>
+        <button id="btnRandomLook" class="btn gen mid">🎲 Rastgele<small>her şey</small></button>
+        <button id="btnGenF" class="btn gen">👩 Kadın<small>rastgele</small></button>
+      </div>
       <button id="btnCustomDone" class="btn primary">Kaydet</button>
     </section>
 
@@ -113,6 +115,7 @@
       <ul id="lobbyPlayers" class="plist"></ul>
       <div class="sec-head"><h2>Ne oynayalım?</h2><span class="muted" id="modesHint"></span></div>
       <div id="modes" class="modes"></div>
+      <div id="teamPanel" class="team-panel hidden"></div>
       <div id="lobbyHost" class="row sticky-row">
         <button id="btnAddBot" class="btn">+ Bot</button>
         <button id="btnStart" class="btn primary grow">Başlat</button>
@@ -129,6 +132,8 @@
     <section id="game" class="screen hidden">
       <header class="hud">
         <button id="btnExit" class="icon-btn" aria-label="çık">✕</button>
+        <button id="btnLand" class="icon-btn land-btn hidden" aria-label="yatay mod">↻ Yatay</button>
+        <button id="btnAdmin" class="icon-btn adm-btn hidden" aria-label="yönetici paneli">⚙️<i id="admBadge" class="adm-badge hidden"></i></button>
         <canvas id="hudMe" class="hud-me" width="64" height="64"></canvas>
         <span id="hudInfo"></span>
         <span id="hudTeam" class="hud-team hidden"></span>
@@ -152,7 +157,19 @@
   <div id="quick" class="quick hidden">
     <div class="quick-sheet">
       <div class="quick-title">Laf at 😈</div>
+      <form id="quickForm" class="quick-form" autocomplete="off">
+        <input id="quickText" type="text" maxlength="60" placeholder="Bir şey yaz…" enterkeyhint="send" autocapitalize="sentences" aria-label="Mesajın">
+        <button class="btn primary" type="submit">Gönder</button>
+      </form>
       <div id="quickGrid" class="quick-grid"></div>
+    </div>
+  </div>
+  <div id="admAlert" class="adm-alert hidden"></div>
+  <div id="admin" class="quick hidden">
+    <div class="quick-sheet adm-sheet">
+      <div class="quick-title">⚙️ Yönetici paneli</div>
+      <div id="admBody"></div>
+      <button class="btn ghost" id="admClose">Kapat</button>
     </div>
   </div>
   <div id="toast" class="toast"></div>

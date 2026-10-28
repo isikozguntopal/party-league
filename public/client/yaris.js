@@ -37,12 +37,31 @@ function makeDecor(track) {
 export function createYaris(ctx) {
   const { pById, playerId } = ctx;
   const g = ctx.g2d;
-  let track = null, decor = null, world = null, deck = null, tiles = null, WB = null, K = 22;
+  let track = null, decor = null, world = null, deck = null, tiles = null, WB = null, K = 30;
   const cam = { x: 5, y: 20, a: -Math.PI / 2, z: 1, init: false };
+  const VW = { rot: Math.PI / 2, ax: 0.5, ay: 0.62 }; // dikeyde araç yukarı bakar; yatayda sağa bakar ve ekranın solunda durur (önü geniş görünür)
   let parts = [];
   let shakeT = 0;
   let R3 = null, T = null, loading = false;
   const portraits = new Map();
+
+  // ---------- Eşyalar: kumanda senkronu ve yardımcılar ----------
+  const ctlBtn = (id) => (ctx.stage.parentNode || ctx.stage).querySelector(`.ctl [data-b="${id}"]`);
+  const spinA = (c) => (c.fx && c.fx.spin > 0 ? (1 - c.fx.spin / Y.FX.spin) * Math.PI * 4 : 0); // füze yiyen iki tam tur döner
+  let uiKey = '';
+  // KULLAN düğmesi elimdeki eşyayı gösterir; gazı/freni kesilmişse pedal kilitli görünür
+  function syncUI(me) {
+    const it = me ? me.item : 0, fx = me ? me.fx : null;
+    const key = `${it}|${fx && fx.nogas > 0 ? 1 : 0}${fx && fx.nobrake > 0 ? 1 : 0}`;
+    if (key === uiKey) return;
+    uiKey = key;
+    const u = ctlBtn('use'), info = Y.ITEMS[it];
+    if (u) { u.innerHTML = info ? `<span class="u-e">${info.emoji}</span><span class="u-n">${info.name}</span>` : '<span class="u-e">❓</span><span class="u-n">eşya yok</span>'; u.classList.toggle('empty', !info); }
+    const gp = ctlBtn('gas'), bp = ctlBtn('brake');
+    if (gp) gp.classList.toggle('locked', !!(fx && fx.nogas > 0));
+    if (bp) bp.classList.toggle('locked', !!(fx && fx.nobrake > 0));
+  }
+  const itemName = (it) => { const i = Y.ITEMS[it]; return i ? `${i.emoji} ${i.name}` : ''; };
 
   const carColor = (p) => (p && p.look ? lookColors(p.look).shirt : '#3b82f6');
   const portraitImg = (p) => {
@@ -58,7 +77,7 @@ export function createYaris(ctx) {
     decor = makeDecor(track);
     const b = track.bounds;
     WB = { x0: b.x0 - 3, y0: b.y0 - 3, x1: b.x1 + 3, y1: b.y1 + 3 };
-    K = Math.min(22, 1500 / Math.max(WB.x1 - WB.x0, WB.y1 - WB.y0));
+    K = Math.min(36, 3400 / Math.max(WB.x1 - WB.x0, WB.y1 - WB.y0));
     world = null; deck = null; tiles = null;
     cam.init = false;
     if (R3) build3DTrack();
@@ -218,11 +237,17 @@ export function createYaris(ctx) {
     const [sx, sy] = toS(c.x, c.y);
     const lift = Math.max(0, c.z) / Y.BRIDGE_H;
     const scale = (1 + lift * 0.08) * (1 - fk * 0.75);
-    const L = 0.95 * sc * scale, Wd = 0.5 * sc * scale;
+    const L = 1.2 * sc * scale, Wd = 0.64 * sc * scale;
     g.save();
     if (falling) g.globalAlpha = 1 - fk * 0.85;
+    else if (c.fx && c.fx.ghost > 0) g.globalAlpha = c.id === playerId ? 0.45 : 0.1; // görünmez: rakipler neredeyse göremez
     else if (c.inv > 0) g.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(now / 70));
-    g.translate(sx, sy); g.rotate(c.h - cam.a - Math.PI / 2 + fk * 2.5); // ekrana göre yön (kamera aracın yönüne döner)
+    g.translate(sx, sy); g.rotate(c.h - cam.a - VW.rot + fk * 2.5 + spinA(c)); // ekrana göre yön (kamera aracın yönüne döner); füze yiyen döner
+    if (c.fx && c.fx.boost > 0 && !falling) { // nitro alevi
+      const fl = 0.9 + 0.5 * Math.abs(Math.sin(now / 45));
+      g.fillStyle = '#fb923c'; g.beginPath(); g.moveTo(-L * 0.5, -Wd * 0.28); g.lineTo(-L * (0.5 + 0.9 * fl), 0); g.lineTo(-L * 0.5, Wd * 0.28); g.fill();
+      g.fillStyle = '#fde047'; g.beginPath(); g.moveTo(-L * 0.5, -Wd * 0.14); g.lineTo(-L * (0.5 + 0.55 * fl), 0); g.lineTo(-L * 0.5, Wd * 0.14); g.fill();
+    }
     const shx = 3 + lift * 9, shy = 4 + lift * 12;
     g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.roundRect(-L / 2 + shx, -Wd / 2 + shy, L, Wd, Wd * 0.3); g.fill();
     g.fillStyle = '#111';
@@ -236,11 +261,54 @@ export function createYaris(ctx) {
     g.fillStyle = '#111'; g.fillRect(-L * 0.52, -Wd * 0.45, L * 0.08, Wd * 0.9);
     g.fillStyle = '#ffe9a8'; g.fillRect(L * 0.44, -Wd * 0.38, L * 0.06, Wd * 0.18); g.fillRect(L * 0.44, Wd * 0.2, L * 0.06, Wd * 0.18);
     g.restore();
-    if (falling) return;
+    if (falling || (c.fx && c.fx.ghost > 0 && c.id !== playerId)) return;
     g.save(); g.font = `700 ${Math.round(10 * ctx.size().DPR)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'bottom';
     g.lineWidth = 3 * ctx.size().DPR; g.strokeStyle = 'rgba(0,0,0,.75)'; g.fillStyle = '#fff';
     const txt = c.id === playerId ? 'SEN' : p.name;
     g.strokeText(txt, sx, sy - Wd * 1.2); g.fillText(txt, sx, sy - Wd * 1.2); g.restore();
+    if (c.fx) { // etki ikonları: gaz tıkalı 🪠, fren yok 🧯, nitro 🥒
+      const ic = `${c.fx.nogas > 0 ? '🪠' : ''}${c.fx.nobrake > 0 ? '🧯' : ''}${c.fx.boost > 0 ? '🥒' : ''}${c.fx.ghost > 0 ? '👻' : ''}`;
+      if (ic) { g.save(); g.font = `${Math.round(15 * ctx.size().DPR)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText(ic, sx, sy - Wd * 1.2 - 14 * ctx.size().DPR); g.restore(); }
+    }
+  }
+
+  // ❓ eşya kutuları (alınmamış olanlar)
+  function drawBoxes2D(st, toS, sc, now, W, H, DPR) {
+    if (!st || !st.boxes || !track || !track.boxes) return;
+    const s = 0.62 * sc;
+    for (let i = 0; i < track.boxes.length; i++) {
+      if (!st.boxes[i]) continue;
+      const b = track.boxes[i], [x, y] = toS(b.x, b.y);
+      if (x < -s || y < -s || x > W + s || y > H + s) continue;
+      g.save(); g.translate(x, y + Math.sin(now / 300 + i) * 0.07 * sc); g.rotate(Math.sin(now / 650 + i) * 0.25);
+      g.shadowColor = 'rgba(253,224,71,.9)'; g.shadowBlur = 12 * DPR;
+      const gr = g.createLinearGradient(-s / 2, -s / 2, s / 2, s / 2); gr.addColorStop(0, '#fef08a'); gr.addColorStop(1, '#f59e0b');
+      g.fillStyle = gr; g.beginPath(); g.roundRect(-s / 2, -s / 2, s, s, s * 0.22); g.fill();
+      g.shadowBlur = 0; g.lineWidth = 2 * DPR; g.strokeStyle = '#fff'; g.stroke();
+      g.fillStyle = '#92400e'; g.font = `900 ${Math.round(s * 0.78)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, s * 0.04);
+      g.restore();
+    }
+  }
+  // 🍌 muz kabuğu tuzakları (herkes görür)
+  function drawTraps2D(st, toS, sc) {
+    if (!st || !st.traps) return;
+    for (const t of st.traps) {
+      const [x, y] = toS(t[0], t[1]);
+      g.save(); g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + 3, y + 5, 0.34 * sc, 0.2 * sc, 0, 0, Math.PI * 2); g.fill();
+      g.font = `${Math.round(0.85 * sc)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🍌', x, y); g.restore();
+    }
+  }
+  // 🥟 füzeler: düz giden mermi + iz
+  function drawProj2D(st, toS, sc) {
+    if (!st || !st.proj) return;
+    for (const p of st.proj) {
+      const [x, y] = toS(p[0], p[1]), [tx, ty] = toS(p[0] - Math.cos(p[2]) * 3.6, p[1] - Math.sin(p[2]) * 3.6);
+      g.save(); g.lineCap = 'round';
+      g.strokeStyle = 'rgba(255,40,70,.28)'; g.lineWidth = 0.7 * sc; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();   // parıltı
+      g.strokeStyle = 'rgba(255,90,110,.85)'; g.lineWidth = 0.3 * sc; g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();   // lazer
+      g.strokeStyle = '#fff'; g.lineWidth = 0.1 * sc; g.beginPath(); g.moveTo((tx + x) / 2, (ty + y) / 2); g.lineTo(x, y); g.stroke(); // sıcak çekirdek
+      g.restore();
+    }
   }
 
   function render2D(st, now, dt, info) {
@@ -259,7 +327,9 @@ export function createYaris(ctx) {
     const zt = 1 - clamp(Math.abs(follow ? follow.sp : 0) / 9, 0, 1) * 0.35;
     cam.z = lerp(cam.z, zt, cam.init ? 1 - Math.pow(0.1, dt) : 1);
     cam.init = true;
-    const sc = (Math.min(W, H) / 9.5) * cam.z;
+    const wide = W > H * 1.15;
+    VW.rot = wide ? 0 : Math.PI / 2; VW.ax = wide ? 0.4 : 0.5; VW.ay = wide ? 0.5 : 0.6;
+    const sc = (Math.min(W, H) / (wide ? 8.2 : 9.4)) * cam.z; // büyük harita, büyük araçlar
     // kayma izleri doğrudan dünya karolarına işlenir (köprü üstünde atlanır)
     if (st) for (const c of Object.values(st.cars)) {
       if (c.fall !== null || c.z > 0.3) continue;
@@ -273,8 +343,8 @@ export function createYaris(ctx) {
     g.fillStyle = SEA2; g.fillRect(0, 0, W, H);
     const worldXf = () => {
       g.save();
-      g.translate(W / 2 + shake, H * 0.62 + shake);
-      g.rotate(-cam.a - Math.PI / 2);
+      g.translate(W * VW.ax + shake, H * VW.ay + shake);
+      g.rotate(-cam.a - VW.rot);
       g.scale(sc / K, sc / K);
       g.translate(-(cam.x - WB.x0) * K, -(cam.y - WB.y0) * K);
     };
@@ -288,15 +358,18 @@ export function createYaris(ctx) {
     }
     g.restore();
     // dünya → ekran
-    const cs = Math.cos(-cam.a - Math.PI / 2), sn = Math.sin(-cam.a - Math.PI / 2);
-    const toS = (x, y) => { const dx = (x - cam.x) * sc, dy = (y - cam.y) * sc; return [W / 2 + dx * cs - dy * sn + shake, H * 0.62 + dx * sn + dy * cs + shake]; };
+    const cs = Math.cos(-cam.a - VW.rot), sn = Math.sin(-cam.a - VW.rot);
+    const toS = (x, y) => { const dx = (x - cam.x) * sc, dy = (y - cam.y) * sc; return [W * VW.ax + dx * cs - dy * sn + shake, H * VW.ay + dx * sn + dy * cs + shake]; };
     if (st) {
       const list = Object.values(st.cars).sort((a, b) => (a.id === playerId) - (b.id === playerId));
+      drawBoxes2D(st, toS, sc, now, W, H, DPR);
+      drawTraps2D(st, toS, sc);
       const upper = (c) => c.fall === null && c.z > Y.BRIDGE_H * 0.5;
       for (const c of list) if (!upper(c)) drawCar2D(c, sc, toS, now);
       // köprü tablası alt yoldaki arabaların üstüne
       if (deck && Math.hypot(track.bridge.x - cam.x, track.bridge.y - cam.y) < Rr / K + 8) { worldXf(); g.drawImage(deck.c, deck.x, deck.y); g.restore(); }
       for (const c of list) if (upper(c)) drawCar2D(c, sc, toS, now);
+      drawProj2D(st, toS, sc);
     } else if (deck) { worldXf(); g.drawImage(deck.c, deck.x, deck.y); g.restore(); }
     parts = parts.filter((p) => (p.life += dt) < p.max);
     for (const p of parts) {
@@ -394,6 +467,17 @@ export function createYaris(ctx) {
         const txt = me.fall < Y.FALL_T ? '😱 Uçurum!' : `⏳ ${Math.max(0, Y.RESPAWN_T - me.fall).toFixed(1)}`;
         g.strokeText(txt, W / 2, H * 0.3); g.fillText(txt, W / 2, H * 0.3); g.restore();
       }
+    }
+    if (me && me.fx && st.phase === 'race') { // bana uygulanan etkiler
+      const rows = [];
+      if (me.fx.spin > 0) rows.push('💫 KONTROLÜ KAYBETTİN!');
+      if (me.fx.nobrake > 0) rows.push(`🧯 FREN ÇALIŞMIYOR ${me.fx.nobrake.toFixed(1)}s`);
+      if (me.fx.nogas > 0) rows.push(`🪠 GAZ TIKALI ${me.fx.nogas.toFixed(1)}s`);
+      if (me.fx.boost > 0) rows.push('🥒 NİTRO!');
+      if (me.fx.ghost > 0) rows.push(`👻 GÖRÜNMEZSİN ${me.fx.ghost.toFixed(1)}s`);
+      g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `900 ${Math.round(17 * DPR)}px system-ui`;
+      rows.forEach((t, i) => { const y = H * 0.215 + i * 30 * DPR, w = g.measureText(t).width + 24 * DPR; g.fillStyle = /NİTRO|GÖRÜNMEZ/.test(t) ? 'rgba(22,101,52,.82)' : 'rgba(127,29,29,.82)'; g.beginPath(); g.roundRect(W / 2 - w / 2, y - 14 * DPR, w, 28 * DPR, 14 * DPR); g.fill(); g.fillStyle = '#fff'; g.fillText(t, W / 2, y); });
+      g.restore();
     }
     if (st.phase === 'race' && spec.goAt && performance.now() - spec.goAt < 1200) return '🟢 BAŞLA!';
     if (me && me.done !== null) return `🏁 Bitirdin! ${placeOf(st, playerId)}. sıra`;
@@ -583,20 +667,43 @@ export function createYaris(ctx) {
     R3.cars.set(id, c);
     return c;
   }
+  // 3D: ❓ kutuları (kutu dokulu) ve füze küreleri
+  function buildItems3D() {
+    const THREE = T;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 96;
+    const x = cv.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 96, 96); gr.addColorStop(0, '#fef08a'); gr.addColorStop(1, '#f59e0b');
+    x.fillStyle = gr; x.fillRect(0, 0, 96, 96); x.lineWidth = 8; x.strokeStyle = '#fff'; x.strokeRect(4, 4, 88, 88);
+    x.fillStyle = '#92400e'; x.font = '900 74px system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('?', 48, 54);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshLambertMaterial({ map: tex, emissive: '#7c4a03', emissiveIntensity: 0.5 });
+    R3.boxMeshes = track.boxes.map((b) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), mat); m.position.set(b.x, 0.5, b.y); R3.scene.add(m); return m; });
+    const pm = new THREE.MeshLambertMaterial({ color: '#fb923c', emissive: '#c2410c', emissiveIntensity: 0.8 });
+    const tm = new THREE.MeshLambertMaterial({ color: '#fde047', emissive: '#a16207', emissiveIntensity: 0.5 });
+    R3.trapMeshes = Array.from({ length: Y.TRAP_MAX }, () => { const m = new THREE.Group(); const a = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.07, 6, 14, Math.PI * 1.15), tm); a.rotation.x = -Math.PI / 2; a.position.y = 0.06; m.add(a); m.visible = false; R3.scene.add(m); return m; });
+    R3.projMeshes = Array.from({ length: 8 }, () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), pm); m.visible = false; R3.scene.add(m); return m; });
+  }
   const pitchAt = (s) => Math.atan2(track.elev(s + 0.5) - track.elev(s - 0.5), 1);
   function render3D(st, now, dt, view) {
     const sz = ctx.size3();
     if (sz.w !== R3.w || sz.h !== R3.h) { R3.renderer.setSize(sz.w, sz.h, false); R3.cam.aspect = sz.w / sz.h; R3.cam.updateProjectionMatrix(); R3.w = sz.w; R3.h = sz.h; }
+    if (track && !R3.boxMeshes) buildItems3D();
+    if (R3.boxMeshes) {
+      R3.boxMeshes.forEach((m, i) => { m.visible = !!(st && st.boxes && st.boxes[i]); m.rotation.y = now / 500 + i; m.position.y = 0.5 + Math.sin(now / 300 + i) * 0.07; });
+      R3.trapMeshes.forEach((m, i) => { const t = st && st.traps && st.traps[i]; m.visible = !!t; if (t) { m.position.set(t[0], 0.07 + Math.max(0, st.cars[playerId] ? st.cars[playerId].z : 0), t[1]); m.rotation.y = i * 1.7; } });
+      R3.projMeshes.forEach((m, i) => { const p = st && st.proj && st.proj[i]; m.visible = !!p; if (p) m.position.set(p[0], 0.32 + Math.max(0, st.cars[playerId] ? st.cars[playerId].z : 0), p[1]); });
+    }
     if (st && track) for (const c of Object.values(st.cars)) {
       const m = carMesh(c.id);
       const falling = c.fall !== null;
       m.grp.position.set(c.x, c.z, c.y);
-      m.grp.rotation.set(0, -c.h, 0);
+      m.grp.rotation.set(0, -c.h - spinA(c), 0);
       if (falling) { const fk = clamp(c.fall / Y.FALL_T, 0, 1); m.grp.rotation.x = fk * 2.2; m.grp.rotation.z = fk * 1.1; m.grp.visible = c.fall < Y.RESPAWN_T - 0.1; }
       else { m.grp.rotation.z = pitchAt(c.s); m.grp.visible = true; }
       if (view === 'fps' && c.id === playerId) m.grp.visible = false;
       if (c.inv > 0 && !falling) m.grp.visible = Math.sin(now / 60) > -0.3;
-      m.label.visible = c.id !== playerId && !falling;
+      if (c.fx && c.fx.ghost > 0 && !falling && c.id !== playerId) m.grp.visible = false; // görünmez rakip
+      m.label.visible = c.id !== playerId && !falling && !(c.fx && c.fx.ghost > 0);
       for (const w of m.wheels) w.rotation.y += c.sp * dt * 6;
     }
     const me = st && (st.cars[playerId] || st.cars[standings(st)[0]]);
@@ -626,10 +733,25 @@ export function createYaris(ctx) {
     return overlay2D(st, W, H, DPR);
   }
 
+  let steerV = 0, steerT = performance.now();
   const spec = {
     kind: 'yaris', mod: Y, views: ['top', 'chase', 'fps'],
-    controls: { left: 'wheel', below: true, buttons: [{ id: 'gas', label: 'GAZ', cls: 'gas' }, { id: 'brake', label: 'FREN', cls: 'brake' }] },
-    input: (c) => ({ steer: c.x, gas: !!c.btn.gas, brake: !!c.btn.brake }),
+    // Solda SOL/SAĞ yön düğmeleri, sağda araba pedalı gibi FREN ve GAZ. Direksiyon basılı tutunca kademeli açılır, bırakınca kademeli kapanır.
+    // (Düğme sırası: ilk ikisi klavye kısayolları için gaz ve fren; görsel sıra CSS ile verilir)
+    controls: { left: 'none', below: true, buttons: [
+      { id: 'gas', label: '<span class="pd-lbl">GAZ</span>', cls: 'yr-pedal yr-gas' },
+      { id: 'brake', label: '<span class="pd-lbl">FREN</span>', cls: 'yr-pedal yr-brake' },
+      { id: 'left', label: '◀ SOL', cls: 'yr-steer yr-left' },
+      { id: 'right', label: 'SAĞ ▶', cls: 'yr-steer yr-right' },
+      { id: 'use', label: '<span class="u-e">❓</span><span class="u-n">eşya yok</span>', cls: 'yr-use empty' },
+    ] },
+    input: (c) => {
+      const now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - steerT) / 1000)); steerT = now;
+      const target = Math.max(-1, Math.min(1, (c.btn.right ? 1 : 0) - (c.btn.left ? 1 : 0) + c.x)); // c.x: bilgisayar klavyesi (oklar/AD)
+      const rate = target === 0 || Math.sign(target) !== Math.sign(steerV) ? 9 : 4.5; // bırakınca/ters yöne çevirince hızlı, basılı tutunca yumuşak
+      steerV += Math.max(-rate * dt, Math.min(rate * dt, target - steerV));
+      return { steer: Math.round(steerV * 100) / 100, gas: !!c.btn.gas, brake: !!c.btn.brake, bomb: !!c.pressed.use }; // bomb = eşyayı kullan (tek basış)
+    },
     setBot: (sim, id) => { if (sim.cars[id]) sim.cars[id].bot = true; },
     onState(s) { if (s.g && s.g.seed != null) setTrack(s.g.seed); },
     interp(a, b, k) {
@@ -657,10 +779,24 @@ export function createYaris(ctx) {
           for (let i = 0; i < 6; i++) parts.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 0, max: 0.6, c: '#d1d5db', r: 0.15, smoke: true });
         }
         if (e.e === 'finish') { sfx(e.id === playerId ? 'fanfare' : 'pop'); }
+        // eşya olayları
+        if (e.e === 'pickup' && e.id === playerId) { sfx('item'); ctx.toast(`${itemName(e.item)} aldın!`); }
+        if (e.e === 'use' && e.id === playerId && e.item === 1) { sfx('engine'); shakeT = performance.now() + 150; }
+        if (e.e === 'fire') { sfx('shot'); }
+        if (e.e === 'trap') { sfx('pop'); if (e.id === playerId) ctx.toast('🍌 Muz Kabuğu bırakıldı'); }
+        if (e.e === 'use' && e.id === playerId && e.item === 5) { sfx('item'); ctx.toast('👻 Görünmezsin!'); }
+        if (e.e === 'noTarget' && e.id === playerId) ctx.toast('Önünde kimse yok!');
+        if (e.e === 'hit') {
+          const nm = (id) => (id === playerId ? 'Sen' : (pById(id) || { name: '?' }).name);
+          if (e.id === playerId) { sfx('crash'); shakeT = performance.now() + 350; ctx.toast(e.item === 6 ? (e.by === playerId ? '🍌 Kendi tuzağına bastın!' : `🍌 ${nm(e.by)}'in tuzağına bastın!`) : `${itemName(e.item)}: ${nm(e.by)} sana attı!`); }
+          else { sfx('hit'); if (e.by === playerId) ctx.toast(e.item === 6 ? `🍌 ${nm(e.id)} tuzağına bastı!` : `${itemName(e.item)} isabet! ${nm(e.id)}`); }
+          for (let i = 0; i < 12; i++) parts.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5, life: 0, max: 0.7, c: e.item === 2 ? '#fb923c' : '#e5e7eb', r: 0.14, smoke: true });
+        }
       }
     },
     render(st, now, dt, view, info) {
       if (st && st.seed != null) setTrack(st.seed);
+      syncUI(st && st.cars[playerId]);
       if (view !== 'top') { if (!R3) { ensure3D(); return render2D(st, now, dt, info); } return render3D(st, now, dt, view); }
       return render2D(st, now, dt, info);
     },

@@ -4,20 +4,23 @@ import * as K from '../games/korkosu.js';
 import { lerp, clamp, sfx } from './util.js';
 import { drawTopAvatar, portraitURL } from './avatar2d.js';
 import { createRealtime } from './rt.js';
+import { showTutorial } from './tutorial.js';
 import { loadThree, buildAvatar, animateAvatar, makeLabel } from './avatar3d.js';
 
 const TEAM_COLORS = ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308'];
 const VOID = '#07080f', ROAD = '#3d4a63', EDGE = '#facc15';
+const KOR_GORUS = 1.7; // kör koşucunun 2D görüş yarıçapı (dünya birimi; eskiden 2.6)
 const HINT_PERIOD = 3, HINT_SHOW = 1.1; // bot rehber ipucu: her 3 sn'de 1,1 sn görünür
 
 export function createKor(ctx) {
   const { pById, pName, playerId } = ctx;
   const g = ctx.g2d;
+  let tutDone = false;
   let shakeT = 0, pingN = 0, myPing = null, lastTap = -Infinity, parts = [], dirs = {}, intro = 0, lastIn = 0;
   let R3 = null, T = null, loading = false, cv3Cleared = false;
   const cam3 = { yaw: -Math.PI / 2, init: false, pos: null };
   // Görünümler: koşucu 2D/3D/FPS arasında geçer; rehber ve izleyici için dizi yerinde ['top']'a daraltılır
-  const views = ['top', 'chase', 'fps'];
+  const views = ['top'];   // yalnızca 2D: kapılar, dönen platformlar, buz ve itişme tek görünümde net olsun
 
   const teamOf = (s) => (s && s.g && s.g.teams ? s.g.teams.find((t) => t.members.includes(playerId)) : null);
   const team = () => teamOf(ctx.state());
@@ -63,7 +66,7 @@ export function createKor(ctx) {
   }
   const onScreen = (p, W, H, m) => { const x = sx(p.x), y = sy(p.y); return x > -m && x < W + m && y > -m && y < H + m; };
 
-  function drawCourse(st, W, H, DPR, now) {
+  function drawCourse(st, W, H, DPR, now, viewer) {
     const c = K.course(st.seed), t = st.el, k = cam.k;
     g.fillStyle = VOID; g.fillRect(0, 0, W, H);
     // uçurum dokusu: seyrek noktalar
@@ -84,15 +87,26 @@ export function createKor(ctx) {
     // yol dokusu: enine çizgiler
     g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1 * DPR;
     for (let s = 2; s < c.LEN; s += 2) { const f = K.frame(c, s), hw = K.widthAt(c, s) / 2; if (!onScreen(f, W, H, k * 3)) continue; g.beginPath(); g.moveTo(sx(f.x + f.nx * hw), sy(f.y + f.ny * hw)); g.lineTo(sx(f.x - f.nx * hw), sy(f.y - f.ny * hw)); g.stroke(); }
-    // konveyörler
-    for (const b of c.belts) {
-      ribbonPath(c, b.s0, b.s1); g.fillStyle = '#2b3650'; g.fill();
-      const sh = (t * b.v) % 0.8;
-      for (let s = b.s0 + 0.4; s < b.s1; s += 0.8) local(c, s, 0, (k) => {
-        g.strokeStyle = '#94a3b8'; g.lineWidth = 2 * DPR;
-        for (let u = -2.0 + sh; u < 2.0; u += 0.8) { const d = Math.sign(b.v) * 0.18; g.beginPath(); g.moveTo(-0.25 * k, (u - d) * k); g.lineTo(0, (u + d) * k); g.lineTo(0.25 * k, (u - d) * k); g.stroke(); }
-      });
+    // kaygan buz
+    for (const z of c.ices) {
+      ribbonPath(c, z.s0, z.s1); g.fillStyle = 'rgba(147,210,255,.62)'; g.fill(); g.strokeStyle = 'rgba(224,242,254,.9)'; g.lineWidth = 2 * DPR; g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,.65)'; g.lineWidth = 1.5 * DPR;
+      for (let s2 = z.s0 + 0.5; s2 < z.s1; s2 += 1.1) { const f = K.frame(c, s2); if (!onScreen(f, W, H, k * 3)) continue; const sh = Math.sin(s2 * 3.7) * 0.8; local(c, s2, sh, (kk) => { g.beginPath(); g.moveTo(-0.25 * kk, -0.12 * kk); g.lineTo(0.25 * kk, 0.12 * kk); g.stroke(); }); }
     }
+    // dönen platformlar (lunapark tarzı): üstündekini döndürür
+    for (const tn of c.turns) local(c, tn.s, tn.u, (kk) => {
+      const a = K.turnA(tn, t), r = tn.r * kk;
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.arc(3 * DPR, 4 * DPR, r, 0, Math.PI * 2); g.fill();
+      g.save(); g.rotate(a);
+      for (let q = 0; q < 8; q++) { g.fillStyle = q % 2 ? '#7c3aed' : '#f472b6'; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, q * Math.PI / 4, (q + 1) * Math.PI / 4); g.closePath(); g.fill(); }
+      g.strokeStyle = '#fde047'; g.lineWidth = 4 * DPR; g.beginPath(); g.arc(0, 0, r - 2 * DPR, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = '#fde047'; for (let q = 0; q < 12; q++) { const aa = q * Math.PI / 6; g.beginPath(); g.arc(Math.cos(aa) * (r - 2 * DPR), Math.sin(aa) * (r - 2 * DPR), 2.4 * DPR, 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = '#f8fafc'; g.beginPath(); g.arc(0, 0, 0.22 * kk, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#111827'; g.lineWidth = 2 * DPR; g.stroke();
+      g.restore();
+      // dönüş yönü oku
+      g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3 * DPR; g.beginPath(); const sg = Math.sign(tn.w); g.arc(0, 0, r * 0.62, -0.9 * sg, 0.9 * sg, sg < 0); g.stroke();
+      const ea = 0.9 * sg, ex = Math.cos(ea) * r * 0.62, ey = Math.sin(ea) * r * 0.62; g.fillStyle = '#fff'; g.beginPath(); g.moveTo(ex + Math.cos(ea + sg * 1.57) * 7 * DPR, ey + Math.sin(ea + sg * 1.57) * 7 * DPR); g.lineTo(ex + Math.cos(ea - sg * 0.9) * 6 * DPR, ey + Math.sin(ea - sg * 0.9) * 6 * DPR); g.lineTo(ex + Math.cos(ea + sg * 2.4) * 6 * DPR, ey + Math.sin(ea + sg * 2.4) * 6 * DPR); g.closePath(); g.fill();
+    });
     // sönen platformlar
     for (const b of c.blinks) {
       const on = K.blinkOn(b, t), left = K.blinkLeft(b, t);
@@ -119,6 +133,23 @@ export function createKor(ctx) {
         g.fillStyle = '#c2410c'; g.fillRect(-0.3 * k, a * k, 0.6 * k - 3 * DPR, (b - a) * k);
       }
     });
+    // başlangıç kapıları: 6 kapı birbirinin aynı; yalnızca yönlendirici (ve izleyici) hangisinin kırılacağını görür
+    { const d = c.door, open = viewer && viewer.doorOpen, showGood = viewer && viewer.showGood;
+      local(c, d.s, 0, (kk) => {
+        for (let i = 0; i < d.n; i++) {
+          const [a, b] = K.doorSeg(i);
+          if (open) { if (i === d.good) { g.fillStyle = '#7c2d12'; for (let q = 0; q < 6; q++) g.fillRect((-0.4 + (q * 0.37) % 0.7) * kk, (a + (b - a) * ((q * 0.53) % 1)) * kk, 0.16 * kk, 0.1 * kk); } continue; }
+          g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(-0.3 * kk + 3 * DPR, a * kk + 4 * DPR, 0.6 * kk, (b - a) * kk);
+          g.fillStyle = '#8a5a2b'; g.fillRect(-0.3 * kk, a * kk + 1, 0.6 * kk, (b - a) * kk - 2);
+          g.fillStyle = '#b07b3e'; g.fillRect(-0.3 * kk, a * kk + 1, 0.22 * kk, (b - a) * kk - 2);
+          g.strokeStyle = '#3b2412'; g.lineWidth = 2 * DPR; g.strokeRect(-0.3 * kk, a * kk + 1, 0.6 * kk, (b - a) * kk - 2);
+          g.fillStyle = '#9ca3af'; g.fillRect(-0.3 * kk, (a + (b - a) * 0.5) * kk - 2 * DPR, 0.6 * kk, 4 * DPR);
+          g.fillStyle = '#fde047'; g.beginPath(); g.arc(0.18 * kk, (a + (b - a) * 0.5) * kk, 2.6 * DPR, 0, Math.PI * 2); g.fill();
+          if (showGood && i === d.good) { const pulse = 0.5 + 0.5 * Math.sin(now / 160); g.strokeStyle = `rgba(74,222,128,${0.6 + 0.4 * pulse})`; g.lineWidth = 3.5 * DPR; g.strokeRect(-0.42 * kk, a * kk - 3 * DPR, 0.84 * kk, (b - a) * kk + 6 * DPR); }
+        }
+      });
+      if (showGood && !open) { const f = K.world(c, d.s - 0.9, (K.doorSeg(d.good)[0] + K.doorSeg(d.good)[1]) / 2); g.font = `900 ${12 * DPR}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 3 * DPR; g.strokeStyle = 'rgba(0,0,0,.8)'; g.fillStyle = '#86efac'; g.strokeText('✅ KIRILIR', sx(f.x), sy(f.y)); g.fillText('✅ KIRILIR', sx(f.x), sy(f.y)); }
+    }
     // kayan bloklar
     for (const m of c.movers) local(c, m.s, K.moverU(m, t), (k) => {
       g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(-0.4 * k + 3 * DPR, -m.w / 2 * k + 4 * DPR, 0.8 * k, m.w * k);
@@ -224,6 +255,13 @@ export function createKor(ctx) {
   function overlayCount(st, W, H, DPR) {
     if (st.phase !== 'count' && st.phase !== 'wait') return false;
     const n = st.phase === 'wait' ? '…' : String(Math.max(1, Math.ceil(st.cd)));
+    // oyun başında kim koşuyor, kim yönlendiriyor: yazıyla duyurulur
+    { const s0 = ctx.state(), t0 = team(), rl = role(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 5 * DPR; g.strokeStyle = 'rgba(0,0,0,.8)';
+      const big = rl === 'kosucu' ? '🏃 SEN KOŞUCUSUN' : rl === 'rehber' ? '🧭 SEN YÖNLENDİRİCİSİN' : '👀 İZLİYORSUN';
+      const sub = t0 ? (rl === 'kosucu' ? `Yönlendiricin: ${pName(t0.guide)}` : `Koşucun: ${pName(t0.runner)}`) : '';
+      g.font = `900 ${Math.round(24 * DPR)}px system-ui`; g.fillStyle = '#fde047'; g.strokeText(big, W / 2, H * 0.12); g.fillText(big, W / 2, H * 0.12);
+      if (sub) { g.font = `800 ${Math.round(16 * DPR)}px system-ui`; g.fillStyle = '#fff'; g.strokeText(sub, W / 2, H * 0.12 + 28 * DPR); g.fillText(sub, W / 2, H * 0.12 + 28 * DPR); }
+      if (s0 && s0.g && s0.g.teams) { g.font = `700 ${Math.round(12 * DPR)}px system-ui`; g.fillStyle = '#cbd5e1'; s0.g.teams.forEach((t, i) => { const line = `${t.members.includes(playerId) ? '▶ ' : ''}🏃 ${pName(t.runner)}  ·  🧭 ${pName(t.guide)}`; const yy = H * 0.12 + 52 * DPR + i * 17 * DPR; g.strokeText(line, W / 2, yy); g.fillText(line, W / 2, yy); }); } }
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `900 ${Math.round(90 * DPR)}px system-ui`; g.lineWidth = 8 * DPR; g.strokeStyle = 'rgba(0,0,0,.6)'; g.fillStyle = '#fff';
     g.strokeText(n, W / 2, H * 0.42); g.fillText(n, W / 2, H * 0.42);
@@ -255,20 +293,28 @@ export function createKor(ctx) {
     const sk = shakeT > now ? (Math.random() - 0.5) * 8 * DPR : 0;
     setCam(W, H, follow.x, follow.y, r !== 'kosucu');
     g.save(); g.translate(sk, sk);
-    drawCourse(st, W, H, DPR, now);
-    for (const tm of st.teams) if (tm !== follow) drawRunner(tm, now, DPR, { alpha: r === 'kosucu' ? 0 : 0.35 });
+    drawCourse(st, W, H, DPR, now, { doorOpen: follow.doorOpen, showGood: r !== 'kosucu' });
+    // herkes aynı yolda: diğer koşucular da burada (koşucunun sisinde yalnızca yakındakiler görünür)
+    for (const tm of st.teams) if (tm !== follow) { const ti = ctx.state().g.teams.find((x) => x.id === tm.id); drawRunner(tm, now, DPR, { alpha: 1, label: ti ? pName(ti.runner) : '' }); }
+    // tutma: tutan ile tutulan arasında çizgi
+    for (const tm of st.teams) if (tm.grabbing !== null) { const v = st.teams.find((x) => x.id === tm.grabbing); if (v) { g.strokeStyle = '#fb923c'; g.lineWidth = 5 * DPR; g.lineCap = 'round'; g.beginPath(); g.moveTo(sx(tm.x), sy(tm.y)); g.lineTo(sx(v.x), sy(v.y)); g.stroke(); g.strokeStyle = '#fff'; g.lineWidth = 1.5 * DPR; g.stroke(); g.lineCap = 'butt'; } }
     const tInfo = ctx.state().g.teams.find((x) => x.id === follow.id);
     drawRunner(follow, now, DPR, { label: r === 'kosucu' ? 'SEN' : pName(tInfo.runner) });
     const hint = tInfo.botGuide && r === 'kosucu' && follow.done === null ? botHint(st, follow) : null;
     // sis: koşucu yalnızca etrafındaki küçük alanı görür
     if (r === 'kosucu') {
+      // arada bir ekran kısa süre açılır: her 10 sn'de ~1,6 sn sis kalkar (0,3 sn yumuşak geçiş)
+      const cyc = st.phase === 'run' ? st.el % 10 : 0, lift = cyc > 8.4 ? Math.min(1, (cyc - 8.4) / 0.3, (10 - cyc) / 0.3) : 0;
+      g.save(); g.globalAlpha = 1 - lift;
       const d = dirs[follow.id] || { a: -Math.PI / 2 };
-      const fx = sx(follow.x) + Math.cos(d.a) * 0.6 * cam.k, fy = sy(follow.y) + Math.sin(d.a) * 0.6 * cam.k, R0 = 2.6 * cam.k;
-      const gr = g.createRadialGradient(fx, fy, R0 * 0.5, fx, fy, R0);
+      const fx = sx(follow.x) + Math.cos(d.a) * 0.6 * cam.k, fy = sy(follow.y) + Math.sin(d.a) * 0.6 * cam.k, R0 = KOR_GORUS * cam.k;
+      const gr = g.createRadialGradient(fx, fy, R0 * 0.35, fx, fy, R0);
       gr.addColorStop(0, 'rgba(5,7,14,0)'); gr.addColorStop(1, 'rgba(5,7,14,1)');
       g.fillStyle = gr; g.beginPath(); g.arc(fx, fy, R0, 0, Math.PI * 2); g.fill();
       g.fillStyle = 'rgb(5,7,14)'; g.beginPath(); g.rect(-20, -20, W + 40, H + 40); g.arc(fx, fy, R0, 0, Math.PI * 2, true); g.fill('evenodd');
+      g.restore();
       drawRunner(follow, now, DPR, { label: 'SEN' });
+      if (lift > 0.3) { g.save(); g.font = `900 ${14 * DPR}px system-ui`; g.textAlign = 'center'; g.fillStyle = '#fde047'; g.strokeStyle = 'rgba(0,0,0,.7)'; g.lineWidth = 4 * DPR; g.strokeText('👀 Ekran açıldı!', W / 2, 70 * DPR); g.fillText('👀 Ekran açıldı!', W / 2, 70 * DPR); g.restore(); }
     }
     // rehberin işareti: dokunuştan sonra kısa süre görünür (sisin üstünde)
     const ping = follow.ping;
@@ -355,10 +401,10 @@ export function createKor(ctx) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(VOID);
-    scene.fog = new THREE.Fog(VOID, 1.6, 7.5); // karanlık: kısa görüş mesafesi
+    scene.fog = new THREE.Fog(VOID, 0.9, 4.8); // karanlık: kısa görüş mesafesi
     const cam = new THREE.PerspectiveCamera(72, 1, 0.05, 40);
     scene.add(new THREE.HemisphereLight('#8fa3cc', '#0b0e1a', 0.9));
-    const torch = new THREE.PointLight('#ffd9a0', 2.4, 8, 1.4); torch.position.y = 1.2; scene.add(torch);
+    const torch = new THREE.PointLight('#ffd9a0', 2.0, 5.5, 1.4); torch.position.y = 1.2; scene.add(torch);
     const mat = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
     return { renderer, scene, cam, torch, mat, w: 0, h: 0, seed: null, course: null, avatars: new Map(), dyn: [], beacon: null, hintBeacon: null };
   }
@@ -428,7 +474,7 @@ export function createKor(ctx) {
       const m = new THREE.Mesh(ribbonGeo(THREE, c, sts, null, { skirt: 0.5 }), [mat('#2563eb', { emissive: '#1d4ed8', emissiveIntensity: 0.5 }), mat('#1e3a8a')]); root.add(m);
       dyn.push({ k: 'blink', o: b, m });
     }
-    for (const b of c.belts) {
+    for (const b of c.belts || []) {
       const sts = [b.s0]; for (let i = Math.ceil(b.s0 / K.DS); i * K.DS < b.s1; i++) if (i * K.DS > b.s0) sts.push(i * K.DS); sts.push(b.s1);
       const tex = canvasTex(THREE, (x, w, h) => { x.fillStyle = '#2b3650'; x.fillRect(0, 0, w, h); x.strokeStyle = '#94a3b8'; x.lineWidth = 4; x.beginPath(); x.moveTo(8, 10); x.lineTo(32, 32); x.lineTo(8, 54); x.stroke(); });
       tex.repeat.set(3, 1);
@@ -542,17 +588,14 @@ export function createKor(ctx) {
 
   const spec = {
     kind: 'kor', mod: K, views,
-    controls: { left: 'stick', below: true, buttons: [] },
+    controls: { left: 'stick', below: true, buttons: [{ id: 'grab', label: '<span class="pk-ic">🤝</span><small>TUT</small>', cls: 'pk-b kr-grab' }] },
     showControls: (s) => roleOf(s) === 'kosucu',
     onState(s) {
       // rehber/izleyici her zaman 2D haritayı görür: görünüm listesi yerinde daraltılır (app.js düğmeyi gizler)
-      const runner = roleOf(s) === 'kosucu';
-      if (!runner && views.length > 1) views.length = 1;
-      else if (runner && views.length === 1) views.push('chase', 'fps');
     },
     input(c, view) {
       if (role() === 'rehber') return myPing ? { ping: myPing } : {};
-      if (view === 'top' || !R3) return { x: c.x, y: c.y };
+      if (view === 'top' || !R3) return { x: c.x, y: c.y, grab: !!c.btn.grab };
       // 3D: çubuk kameraya göre (ileri = kameranın baktığı yön)
       const fwd = -c.y, h = cam3.yaw, now = performance.now(), idt = Math.min(0.1, (now - lastIn) / 1000);
       lastIn = now;
@@ -588,6 +631,9 @@ export function createKor(ctx) {
           for (let i = 0; i < 14; i++) { const a = Math.random() * 6.28, v = 1 + Math.random() * 3; parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.5 + Math.random() * 0.4, c: e.e === 'hit' ? (Math.random() < 0.5 ? '#fbbf24' : '#f87171') : '#94a3b8' }); }
           if (t && e.team === t.id) { shakeT = performance.now() + 450; if (navigator.vibrate) navigator.vibrate(120); }
         }
+        if (e.e === 'door') { sfx('crash'); const c0 = K.course(ctx.state().g.seed), w0 = K.world(c0, K.DOOR_S, 0); for (let i = 0; i < 22; i++) { const a = Math.random() * 6.28, v = 1 + Math.random() * 3; parts.push({ x: w0.x, y: w0.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.6 + Math.random() * 0.5, c: Math.random() < 0.5 ? '#b07b3e' : '#7c2d12' }); } if (t && e.team === t.id) { shakeT = performance.now() + 350; if (navigator.vibrate) navigator.vibrate(80); } }
+        if (e.e === 'grab') { sfx('pop'); if (t && e.to === t.id && navigator.vibrate) navigator.vibrate(60); }
+        if (e.e === 'throw') { sfx('crash'); for (let i = 0; i < 12; i++) { const a = Math.random() * 6.28, v = 1 + Math.random() * 3; parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.4 + Math.random() * 0.3, c: '#fdba74' }); } if (t && e.to === t.id) shakeT = performance.now() + 300; }
         if (e.e === 'respawn' && t && e.team === t.id) sfx('pop');
         if (e.e === 'cp' && t && e.team === t.id) sfx('score');
         if (e.e === 'ping' && t && e.team === t.id && role() === 'kosucu') sfx('pop');
@@ -595,6 +641,23 @@ export function createKor(ctx) {
       }
     },
     render(st, now, dt, view) {
+      if (st && !tutDone) {
+        const rl = role();
+        if (rl !== 'izle') {
+          tutDone = true;
+          showTutorial(ctx.stage, `${ctx.state().code}:${ctx.state().seq}:kor`, rl === 'kosucu'
+            ? { title: '🏃 SEN KOŞUCUSUN', rows: [
+              { ic: '👆', anim: 'cross', text: '<b>Sol alttaki yuvarlağı sürükle</b>: parmağını yukarı, aşağı, sağa, sola kaydır, karakterin o yöne koşar.' },
+              { ic: '🙈', anim: 'none', text: '<b>Sadece etrafını görürsün!</b> Yolu takım arkadaşın (yönlendiricin) sana söyleyecek. Başlangıçta 6 kapı var: yalnızca biri kırılır, hangisi olduğunu o bilir!' },
+              { ic: '🤝', anim: 'tap', text: '<b>TUT düğmesi (sağda):</b> yanındaki rakibi yakala, taşı ve bırak: uçuruma atabilirsin. O da seni atabilir!' },
+              { ic: '🟥', anim: 'none', text: '<b>Engellere çarpma, buzda kayma, dönen platformda savrulma!</b> Çarparsan ya da düşersen kontrol noktasına dönersin.' }] }
+            : { title: '🧭 SEN YÖNLENDİRİCİSİN', rows: [
+              { ic: '🗺️', anim: 'none', text: '<b>Haritayı sen görüyorsun</b>, koşucun ise yalnızca önünü görüyor. Onun gözü sensin!' },
+              { ic: '👆', anim: 'tap', text: '<b>Haritaya dokun</b>: koşucuna işaret gider. Konuşarak da yönlendir (sağa, sola, dur, zıpla…).' },
+              { ic: '✅', anim: 'none', text: '<b>Başlangıçtaki 6 kapıdan hangisi kırılır?</b> Yeşil işaretli olanı sen görürsün, koşucuna söyle!' },
+              { ic: '🟥', anim: 'none', text: '<b>Engelleri, buzu, dönen platformları ve rakipleri</b> önceden haber ver; koşucu düşerse ya da çarparsa kontrol noktasına döner.' }] });
+        }
+      }
       if (role() !== 'kosucu') {
         // rehber/izleyici: her zaman 2D harita. 3D tuvalde eski kare kalmasın
         if (!cv3Cleared && ctx.cv3) { cv3Cleared = true; try { if (!R3) ctx.cv3.width = ctx.cv3.width; } catch {} }

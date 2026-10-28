@@ -18,11 +18,12 @@ export function createKeski(ctx) {
       <button class="btn ghost" data-k="reset">⟲ Sıfırla</button>
       <button class="btn ok" data-k="send">Gönder ✓</button>
     </div>
+    <div class="kk-bot hidden" id="kkOk"><span class="kk-count" id="kkOkN"></span><button class="btn ok" data-k="ok">Ezberledim ✓</button></div>
     <div class="kk-res hidden" id="kkRes"></div>`;
   ctx.stage.appendChild(ui);
   const mine = [];                     // kırdığım parçalar (sırayla, geri alınabilir)
   const targets = {};                  // tur → hedef (gösterim bitince sunucu göndermez, burada saklanır)
-  let key = '', anim = null, submitted = false, autoSent = false, lastSec = -1;
+  let okSent = false, okRound = 0, key = '', anim = null, submitted = false, autoSent = false, lastSec = -1;
   let T = null, R = null, loading = false;
   const orbit = { yaw: DEF_YAW, pitch: DEF_PITCH, user: false };
   let drag = null, debris = [];
@@ -34,10 +35,15 @@ export function createKeski(ctx) {
     if (b.dataset.k === 'reset') { mine.length = 0; sfx('tick'); }
     if (b.dataset.k === 'send' && mine.length) send();
   });
+  ui.querySelector('#kkOk').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-k="ok"]') || okSent) return;
+    okSent = true; sfx('pop');
+    const s = st(); ctx.call({ action: 'gact', seq: s.seq, round: s.round, t: 'ok' }).catch((err) => { okSent = false; ctx.toast(err.message); });
+  });
   function send() { submitted = true; sfx('pop'); ctx.submit(); }
 
   const st = () => ctx.state();
-  const showEnd = (s) => s.roundStart + s.g.showMs;
+  const showEnd = (s) => s.g.showEnd || s.roundStart + s.g.showMs;
   const me = () => ctx.me();
   const canCarve = () => { const s = st(); return s && s.status === 'playing' && ctx.phase() === 'plan' && !submitted && ctx.serverNow() >= showEnd(s) - 500; };
 
@@ -174,11 +180,24 @@ export function createKeski(ctx) {
     $('#kkRes').classList.add('hidden');
   }
 
+  // Doğru kırılan parça sayısı: hedefle kesişim / hedef sayısı; fazladan kırılanlar ayrıca gösterilir
+  const score = (e, r) => {
+    const tg = e.target || [], my = r && r.removed ? r.removed : [];
+    const right = my.filter((i) => tg.includes(i)).length, extra = my.filter((i) => !tg.includes(i)).length;
+    return { right, total: tg.length, extra };
+  };
   function revealHTML(e) {
     const ids = Object.keys(e.results);
-    return `<b>${e.results[playerId] ? (e.results[playerId].ok ? '✅ Aynısını yonttun!' : '❌ Şekil tutmadı — elendin') : 'Doğru şekil'}</b>
-      <div class="kk-faces">${ids.map((id) => { const p = pById(id) || { look: null, color: '#888', name: '?' }; const r = e.results[id]; return `<span class="${r.ok ? 'ok' : 'no'}${id === playerId ? ' me' : ''}"><img src="${portraitURL(p.look, p.color)}" alt="">${r.ok ? '✓' : '✗'}<small>${esc(id === playerId ? 'Sen' : p.name)}</small></span>`; }).join('')}</div>
-      ${e.results[playerId] && !e.results[playerId].ok ? '<small class="kk-leg"><i class="y"></i> kırman gereken · <i class="r"></i> fazladan kırdığın</small>' : ''}`;
+    const mineR = e.results[playerId], ms = mineR ? score(e, mineR) : null;
+    const head = !mineR ? 'Doğru şekil'
+      : mineR.ok ? `✅ MÜKEMMEL! ${ms.total}/${ms.total}`
+      : `❌ ${ms.right}/${ms.total} doğru${ms.extra ? ` · ${ms.extra} fazla` : ''}${mineR.removed ? '' : ' (göndermedin)'} — elendin`;
+    // en çok doğru yapan(lar) öne: kim kazandı anlaşılsın
+    const sorted = ids.slice().sort((a, b) => (e.results[b].ok - e.results[a].ok) || (score(e, e.results[b]).right - score(e, e.results[a]).right) || (score(e, e.results[a]).extra - score(e, e.results[b]).extra));
+    return `<b>${head}</b>
+      <div class="kk-faces">${sorted.map((id) => { const p = pById(id) || { look: null, color: '#888', name: '?' }; const r = e.results[id], sc = score(e, r); return `<span class="${r.ok ? 'ok' : 'no'}${id === playerId ? ' me' : ''}"><img src="${portraitURL(p.look, p.color)}" alt=""><b class="kk-sc">${r.ok ? '✓ ' : ''}${sc.right}/${sc.total}</b><small>${esc(id === playerId ? 'Sen' : p.name)}${sc.extra ? ` · +${sc.extra}` : ''}</small></span>`; }).join('')}</div>
+      ${(() => { const nmOf = (id) => (id === playerId ? 'Sen' : (pById(id) || { name: '?' }).name); const good = ids.filter((id) => e.results[id].ok).map(nmOf), bad = ids.filter((id) => !e.results[id].ok).map(nmOf); return `<div class="kk-bad ok">✅ Doğru bilenler: ${good.length ? good.map(esc).join(', ') : 'kimse'}</div><div class="kk-bad no">${bad.length ? '❌ Bilemeyenler: ' + bad.map(esc).join(', ') : '🎉 Herkes doğru yaptı!'}</div>`; })()}
+      ${mineR && !mineR.ok ? '<small class="kk-leg"><i class="y"></i> kırman gereken · <i class="r"></i> fazladan kırdığın</small>' : ''}`;
   }
 
   const client = {
@@ -214,8 +233,14 @@ export function createKeski(ctx) {
         else if (sn < showEnd(s)) {
           mode = targets[s.round] ? 'target' : 'full'; spin = (Math.PI * 2) / (s.g.showMs / 1000) * 0.9;
           const sec = Math.ceil((showEnd(s) - sn) / 1000);
-          if (sec !== lastSec) { lastSec = sec; sfx('tick'); }
-          banner = `👀 EZBERLE! ${sec}`;
+          if (sec !== lastSec) lastSec = sec;
+          if (okRound !== s.round) { okRound = s.round; okSent = false; }
+          const okBox = $('#kkOk'), mineOk = okSent || (s.g.ok || []).includes(playerId);
+          const showOk = s.round === 1 && alive && !mineOk;
+          okBox.classList.toggle('hidden', !(s.round === 1 && alive));
+          okBox.querySelector('button').classList.toggle('hidden', !showOk);
+          $('#kkOkN').textContent = `${(s.g.ok || []).length}/${(s.g.need || []).length} hazır`;
+          banner = s.round === 1 ? (mineOk ? '✅ Diğerleri bekleniyor…' : '👀 EZBERLE! Hazır olunca "Ezberledim"e bas') : `⏱️ HIZLI EZBERLE! ${sec} sn var`;
         } else if (!alive) { mode = targets[s.round] ? 'target' : 'full'; spin = 0.3; banner = '👀 İzliyorsun'; }
         else {
           if (!orbit.reset) { orbit.reset = true; orbit.yaw = DEF_YAW; orbit.pitch = DEF_PITCH; orbit.user = false; }
@@ -226,6 +251,7 @@ export function createKeski(ctx) {
         }
         if (sn < showEnd(s)) orbit.reset = false;
       }
+      if (mode !== 'target' || !s || s.round !== 1) $('#kkOk').classList.add('hidden');
       shape(mode, s);
       render3D(now, dt, mode, spin);
       const carving = mode === 'mine' && alive && !submitted && ph === 'plan';

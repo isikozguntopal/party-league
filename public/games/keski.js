@@ -15,16 +15,20 @@ export const RULES = [
 export const N = 3;
 export const CENTER = 13;                         // ortadaki görünmez küp hiç kullanılmaz
 export const BOTTOM = 10;                         // alt yüzün ortası yalnızca alttan görünür: hedefe girmez
-export const SHOW_MS = (round) => 9000 + Math.min(4, round) * 700;   // ezber süresi (eskiden 4,5-5,4 sn: çok kısaydı)
+// Ezber süresi: 1. tur herkes "Tamam" diyene dek (en fazla 60 sn), 2. tur 15 sn, sonrası 10 sn
+export const SHOW_MS = (round) => (round <= 1 ? 60000 : round === 2 ? 15000 : 10000);
 export const CARVE_MS = 22000;
 export const PLACE_MS = 30000;
-export const REVEAL_MS = 4200;
+export const REVEAL_MS = 6500;
 const MAX_ROUNDS = 9;
 
 export const cubeIdx = (x, y, z) => x + y * N + z * N * N;
 export const cubeXYZ = (i) => [i % N, Math.floor(i / N) % N, Math.floor(i / (N * N))];
 export const removeCount = (round) => Math.min(12, 2 + round);
 export const placeMs = (d) => SHOW_MS(d.round) + CARVE_MS;
+// Ezberin bittiği an: 1. turda herkes "Tamam" deyince erken biter
+export const showEndOf = (d) => (d.g.showAt && d.g.showAt[d.round]) || d.roundStart + SHOW_MS(d.round);
+const humansAlive = (d) => Object.keys(d.g.alive).filter((id) => d.g.alive[id] && (d.players || []).some((p) => p.id === id && !p.bot && !p.left));
 
 function target(round) {
   const pool = Array.from({ length: N * N * N }, (_, i) => i).filter((i) => i !== CENTER && i !== BOTTOM);
@@ -34,14 +38,26 @@ function target(round) {
 const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
 
 export function init(ids) {
-  return { alive: Object.fromEntries(ids.map((id) => [id, true])), outs: [], targets: { 1: target(1) } };
+  return { alive: Object.fromEntries(ids.map((id) => [id, true])), outs: [], targets: { 1: target(1) }, ok: {}, showAt: {} };
 }
 
 export function normalize(d, pid, body, now) {
-  if (now < d.roundStart + SHOW_MS(d.round) - 500) throw new GameError('Önce ezberle!');
+  if (now < showEndOf(d) - 500) throw new GameError('Önce ezberle!');
   const r = Array.isArray(body.removed) ? [...new Set(body.removed.map(Number))].filter((i) => Number.isInteger(i) && i >= 0 && i < 27).sort((a, b) => a - b) : null;
   if (!r) throw new GameError('Geçersiz küp');
   return { removed: r, t: Math.max(0, now - d.roundStart) };
+}
+
+// 1. turda herkes ezberleyince ("Tamam") şekil kapanır ve yontma başlar
+export function gact(d, pid, body, now) {
+  if (body.t !== 'ok' || body.round !== d.round || d.round !== 1) return false;
+  if (!d.g.alive[pid] || now < d.roundStart || now >= showEndOf(d)) return false;
+  const list = (d.g.ok[d.round] = d.g.ok[d.round] || []);
+  if (list.includes(pid)) return false;
+  list.push(pid);
+  const need = humansAlive(d);
+  if (need.every((id) => list.includes(id))) { d.g.showAt[d.round] = now + 400; d.deadline = now + 400 + CARVE_MS; }
+  return true;
 }
 
 // Bot: tur ilerledikçe hata yapma olasılığı artar
@@ -77,12 +93,16 @@ export function ranking(d, participants) {
 
 // Hedef küp yalnızca gösterim süresince gönderilir (sonra ezberden!)
 export function view(d, pid, now) {
-  const showing = d.status === 'playing' && now < d.roundStart + SHOW_MS(d.round);
+  const showEnd = showEndOf(d);
+  const showing = d.status === 'playing' && now < showEnd;
   return {
     alive: d.g.alive,
     // sorgu gecikmesi ezber süresini yemesin: biraz önce gönderilir, istemci tam zamanında gösterir
     target: showing && now >= d.roundStart - 1500 ? d.g.targets[d.round] : null,
     count: removeCount(d.round),
-    showMs: SHOW_MS(d.round),
+    showMs: showEnd - d.roundStart,
+    showEnd,
+    ok: (d.g.ok && d.g.ok[d.round]) || [],
+    need: humansAlive(d),
   };
 }

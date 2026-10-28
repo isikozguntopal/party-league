@@ -13,7 +13,7 @@ export const RULES = [
 ];
 const base = realtimeServer();
 export const { realtime, PLACE_MS, normalize, auto, resolve, ranking } = base;
-const MAX_TIME = 30, WIN = 1, MAX_TAP = 12;
+const MAX_TIME = 22, WIN = 1, MAX_TAP = 12;
 
 export function init(ids, env) {
   const [A, B] = twoTeams(env || { players: ids.map((id) => ({ id, bot: false })), addBot: () => ({ id: 'x', bot: true }) });
@@ -61,7 +61,7 @@ export function stepSim(sim, dt, inputs) {
   }
   const n = Math.max(1, sim.teams[0].length);
   const diff = (force[1] - force[0]) / n; // pozitif: B (sağ) kazanıyor
-  sim.v += (diff * 0.022 - sim.v * 1.5) * dt * 10;
+  sim.v += (diff * 0.036 - sim.v * 1.5) * dt * 10;
   sim.p += sim.v * dt;
   const el = sim.t - sim.t0;
   if (Math.abs(sim.p) >= WIN || el > MAX_TIME) {

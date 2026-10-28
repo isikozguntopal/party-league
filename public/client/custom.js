@@ -32,7 +32,10 @@ export function createCustomizer({ getLook, onChange, color = () => '#3b82f6' })
     sfx('tick');
     changed();
   });
-  $('#btnRandomLook').addEventListener('click', () => { look = randomLook(); sfx('pop'); changed(); if (R && R.av) startEmote(R.av, 'surprise', performance.now() / 1000); });
+  const gen = (gender) => { look = randomLook(); if (gender) { look.gender = gender; if (gender === 'kadin' && look.beard !== 'yok') look.beard = 'yok'; if (gender === 'kadin' && look.style === 'kel') look.style = 'uzun'; if (gender === 'erkek' && ['topuz', 'orgu'].includes(look.style) && Math.random() < 0.7) look.style = 'kisa'; if (gender === 'erkek' && look.outfit === 'elbise') look.outfit = 'tisort'; } sfx('pop'); changed(); if (R && R.av) startEmote(R.av, 'surprise', performance.now() / 1000); };
+  $('#btnRandomLook').addEventListener('click', () => gen(null));
+  $('#btnGenM').addEventListener('click', () => gen('erkek'));
+  $('#btnGenF').addEventListener('click', () => gen('kadin'));
   $('#btnSpin').addEventListener('click', () => { spin = !spin; $('#btnSpin').classList.toggle('on', spin); $('#btnSpin').textContent = spin ? '🔄 Döndür: Açık' : '⏸️ Döndür: Kapalı'; });
   $('#customEmotes').innerHTML = Object.entries(EMOTE_BTN).map(([k, e]) => `<button class="emo" data-emo="${k}" title="${k}">${e}</button>`).join('');
   $('#customEmotes').addEventListener('click', (e) => {

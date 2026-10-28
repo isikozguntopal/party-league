@@ -1,16 +1,14 @@
 // 🪨 Sapan Arenası istemcisi: üstten 2D görünüm + birinci şahıs (FPS) 3D görünüm
-// Yerleşme turunda joystick ile yürünür, ⟲/⟳ ile nişan döndürülür; nişan önizlemesi noktalı bir
+// Yerleşme turunda tamamen dokunmayla oynanır (karakteri sürükle = yürü, boşluğa dokun = nişan); nişan önizlemesi noktalı bir
 // kavis (lob) olarak gösterilir. Açılışta taş kavis çizerek uçar, çarpınca toz bulutu ve sarsıntı olur.
 import * as LZ from '../games/lazer.js';
-import { clamp, lerp, easeOut, easeIn, easeInOut, easeOutBack, sfx } from './util.js';
+import { clamp, lerp, easeOut, easeIn, easeInOut, easeOutBack, sfx, ls } from './util.js';
 import { drawTopAvatar } from './avatar2d.js';
 import { loadThree, buildAvatar, animateAvatar, makeLabel } from './avatar3d.js';
-import { createControls } from './controls.js';
 
 const SHRINK_MS = 1500;
 const EYE = 0.29;          // göz yüksekliği (dünya birimi)
 const AV_SCALE = 0.28;     // 3D karakter ölçeği (gövde ≈ 2*BODY_R)
-const WALK_SPEED = 0.42;   // yürüme hızı (birim/sn, tam boy arenada)
 const TURN_SPEED = 2.4;    // nişan döndürme hızı (rad/sn)
 const LIFT = 0.55;         // 2D'de yükseklik → ekranda yukarı kayma oranı
 const MISS_MS = 420;       // ıskalayan taşın kenardan aşağı düşüş süresi
@@ -28,15 +26,24 @@ export function createLazer(ctx) {
   let phaseT0 = 0, lastPhase = null;
   let walkAmt = 0, stepT = 0, keyRot = 0, ctlShown = null;
 
-  // ---------- Kumanda: joystick = yürü, ⟲/⟳ = nişanı döndür, −/+ = menzil (yalnızca yerleşme turunda) ----------
-  const ctl = createControls(ctx.stage, { left: 'stick', buttons: [
-    { id: 'ccw', label: '⟲', cls: 'sapan-rot' }, { id: 'cw', label: '⟳', cls: 'sapan-rot' },
-    { id: 'near', label: '−', cls: 'sapan-rng' }, { id: 'far', label: '+', cls: 'sapan-rng' },
-  ] });
-  const ctlRoot = ctx.stage.lastElementChild;
-  if (ctlRoot && ctlRoot.classList.contains('ctl')) ctlRoot.classList.add('sapan-ctl');
-  ctl.show(false);
-  const RANGE_SPEED = 0.8; // menzil değişimi (birim/sn)
+  // ---------- Kumanda yok: dokunmayla oynanır. İlk seferde tek seferlik kısa tanıtım gösterilir ----------
+  const TUT_KEY = 'lk.tut.sapan';
+  const RANGE_SPEED = 0.8; // menzil değişimi (birim/sn, klavye)
+  let tutEl = null;
+  function maybeTutorial() {
+    return; // öğretici artık her oyun başında client/tutorial.js ile gösterilir
+    if (tutEl || ls.get(TUT_KEY)) return;
+    tutEl = document.createElement('div');
+    tutEl.className = 'sapan-tut';
+    tutEl.innerHTML = `<div class="st-card">
+      <h3>🪨 Nasıl oynanır?</h3>
+      <div class="st-row"><span class="st-ic st-drag">👆</span><p><b>Karakterini sürükle</b><br>Parmağınla tutup istediğin yere taşı.</p></div>
+      <div class="st-row"><span class="st-ic st-tap">👆</span><p><b>Boş bir yere dokun</b><br>Sapan o yöne bakar. Parmağın ne kadar uzaksa taş o kadar uzağa gider.</p></div>
+      <div class="st-row"><span class="st-ic">🎯</span><p><b>Noktalı kavis</b> taşın düşeceği yeri gösterir. Hazır olunca <b>Hazırım</b>'a bas.</p></div>
+      <button class="st-ok">Anladım</button></div>`;
+    tutEl.querySelector('.st-ok').onclick = () => { ls.set(TUT_KEY, '1'); tutEl.remove(); tutEl = null; sfx('pop'); };
+    ctx.stage.appendChild(tutEl);
+  }
   const keyMap = { KeyQ: -1, KeyE: 1 }, rngMap = { KeyF: -1, KeyR: 1 };
   let keyRng = 0;
   const onKeyDown = (e) => {
@@ -47,29 +54,10 @@ export function createLazer(ctx) {
   const onKeyUp = (e) => { if (keyMap[e.code] === keyRot) keyRot = 0; if (rngMap[e.code] === keyRng) keyRng = 0; };
   addEventListener('keydown', onKeyDown); addEventListener('keyup', onKeyUp);
 
-  function applyControls(dt, sc, view) {
-    const c = ctl.read();
-    const rot = (c.btn.cw ? 1 : 0) - (c.btn.ccw ? 1 : 0) + keyRot;
-    if (rot) my.a += clamp(rot, -1, 1) * TURN_SPEED * dt;
-    const rng = (c.btn.far ? 1 : 0) - (c.btn.near ? 1 : 0) + keyRng;
-    if (rng) my.r = clamp(my.r + clamp(rng, -1, 1) * RANGE_SPEED * dt, LZ.MIN_RANGE, LZ.MAX_RANGE);
-    let mx = c.x, mz = c.y;
-    const L = Math.hypot(mx, mz);
-    if (L > 1) { mx /= L; mz /= L; }
-    if (L > 0.06) {
-      let dx, dy;
-      if (view === 'fps') {
-        // İleri = baktığım yön, sağ = bakışın sağı
-        const ca = Math.cos(my.a), sa = Math.sin(my.a), f = -mz, r = mx;
-        dx = ca * f - sa * r; dy = sa * f + ca * r;
-      } else { dx = mx; dy = mz; }
-      const sp = WALK_SPEED * (0.55 + 0.45 * sc) * dt;
-      const p = LZ.walk(my.x, my.y, dx * sp, dy * sp, sc);
-      my.x = p.x; my.y = p.y;
-      walkAmt = lerp(walkAmt, Math.min(1, L), 0.3);
-      stepT += dt;
-      if (stepT > 0.3) { stepT = 0; sfx('step'); }
-    } else { walkAmt = lerp(walkAmt, 0, 0.2); stepT = 0.2; }
+  // Masaüstü klavyesi: Q/E nişanı döndürür, F/R menzili değiştirir (telefonda yalnızca dokunma)
+  function applyControls(dt) {
+    if (keyRot) my.a += keyRot * TURN_SPEED * dt;
+    if (keyRng) my.r = clamp(my.r + keyRng * RANGE_SPEED * dt, LZ.MIN_RANGE, LZ.MAX_RANGE);
   }
 
   // ---------- Zaman çizelgesi ----------
@@ -443,6 +431,22 @@ export function createLazer(ctx) {
       g.strokeText(txt, sx, sy - r * 1.55); g.fillText(txt, sx, sy - r * 1.55);
       g.restore();
     }
+    const bb = ctx.bubble && ctx.bubble(p.id);
+    if (bb && size > 0.6) drawSpeech(bb.q, sx, sy - r * 1.55 - 14 * DPR, alpha);
+  }
+  // konuşma balonu: metin kutusu + aşağı bakan kuyruk
+  function drawSpeech(text, x, y, alpha) {
+    g.save(); g.globalAlpha = alpha;
+    g.font = `700 ${12 * DPR}px system-ui, -apple-system, "Apple Color Emoji", sans-serif`;
+    const t = text.length > 28 ? text.slice(0, 27) + '…' : text;
+    const w = g.measureText(t).width + 16 * DPR, h = 24 * DPR;
+    const bx = Math.max(4 * DPR, Math.min(W - w - 4 * DPR, x - w / 2)), by = Math.max(4 * DPR, y - h - 8 * DPR);
+    g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.5 * DPR;
+    g.beginPath(); g.roundRect(bx, by, w, h, 10 * DPR); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(x - 6 * DPR, by + h - 1); g.lineTo(x, by + h + 8 * DPR); g.lineTo(x + 6 * DPR, by + h - 1); g.closePath(); g.fillStyle = '#fff'; g.fill();
+    g.fillStyle = '#10142a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(t, bx + w / 2, by + h / 2 + DPR);
+    g.restore();
   }
   function centerText(txt, sub) {
     g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -906,7 +910,7 @@ export function createLazer(ctx) {
   // ---------- Dışa açık arayüz ----------
   const client = {
     kind: 'lazer',
-    supports3D: true,
+    supports3D: false, views: ['top'],
     onState(s) {
       if (s.status !== 'playing') return;
       const key = `${s.seq}:${s.round}`;
@@ -927,8 +931,8 @@ export function createLazer(ctx) {
       const s = ctx.state();
       const sc = updateScale(now);
       const ed = ph === 'plan' && ctx.editing() && s.status === 'playing';
-      if (ed !== ctlShown) { ctlShown = ed; ctl.show(ed); }
-      if (ed) applyControls(dt, Math.min(sc, LZ.arenaScale(s.round)), view); else walkAmt = 0;
+      if (ed !== ctlShown) { ctlShown = ed; if (ed) maybeTutorial(); }
+      if (ed) applyControls(dt); else walkAmt = 0;
       if (ph === 'plan' && !drag) { const c = LZ.clampInside(my.x, my.y, LZ.BODY_R + 0.01, Math.min(sc, LZ.arenaScale(s.round))); my.x = c.x; my.y = c.y; }
       if (anim) fireEvents(anim.entry, now - anim.t0, now);
       stepParticles(dt);
@@ -940,9 +944,10 @@ export function createLazer(ctx) {
       return '';
     },
     ready3D: () => !!R,
+    autoSubmitMs: 2000, // Hazırım'a basılmazsa süre dolmadan 2 sn önce mevcut konum/nişan gönderilir (rastgele atış yok)
     hint(editing) {
       return editing
-        ? (ctx.view() === 'fps' ? 'Joystick ile yürü • ⟲ ⟳ yön • − + menzil • ekranı yukarı/aşağı sürükle: menzil' : 'Joystick ile yürü • ⟲ ⟳ yön • − + menzil • dokunduğun yere nişan alır')
+        ? (ctx.view() === 'fps' ? 'Sağa-sola sürükle: dön • yukarı-aşağı: menzil • mini haritaya dokun: yürü' : 'Karakteri sürükle: yürü • boş yere dokun: nişan al (uzaklık = menzil)')
         : null;
     },
     panel() { return ''; },
@@ -1004,7 +1009,7 @@ export function createLazer(ctx) {
     dispose() {
       if (R) { R.renderer.dispose(); R = null; }
       anim = null;
-      ctl.destroy();
+      if (tutEl) { tutEl.remove(); tutEl = null; }
       removeEventListener('keydown', onKeyDown); removeEventListener('keyup', onKeyUp);
     },
   };

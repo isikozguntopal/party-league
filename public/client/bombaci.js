@@ -30,13 +30,12 @@ export function createBombaci(ctx) {
   // ---------- Kılavuz ----------
   function manualHTML() {
     const wires = Object.entries(BB.WIRE_RULES).map(([n, rules]) => `<div class="mn-sub"><b>${n} kablo varsa:</b><ol>${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ol></div>`).join('');
-    const cols = BB.COLUMNS.map((c, i) => `<div class="mn-col"><b>${i + 1}</b>${c.map((k) => `<span>${BB.SYMS[k]}</span>`).join('')}</div>`).join('');
     return `<div class="manual">
       <h3>📕 Bomba İmha Kılavuzu</h3>
       <section><h4>✂️ Kablolar</h4><p>Kablolar yukarıdan aşağıya sayılır. Tek bir kablo kesilmeli.</p>${wires}</section>
       <section><h4>🔴 Düğme</h4><ol>${BB.BUTTON_RULES.map((r) => `<li>${esc(r)}</li>`).join('')}</ol>
         <div class="mn-sub"><b>Basılı tutarken:</b><ul>${BB.STRIP_RULES.slice(1).map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div></section>
-      <section><h4>🔣 Semboller</h4><p>Dört sembolün hepsi aşağıdaki sütunlardan yalnızca BİRİNDE bulunur. O sütunda yukarıdan aşağıya hangi sırayla geçiyorlarsa o sırayla basılmalı.</p><div class="mn-cols">${cols}</div></section>
+      <section><h4>🔐 Şifre Kilidi</h4><ol>${BB.LOCK_RULES.map((r) => `<li>${esc(r)}</li>`).join('')}</ol></section>
     </div>`;
   }
 
@@ -59,15 +58,18 @@ export function createBombaci(ctx) {
         <button class="big-btn" id="bbBtn" style="--c:${BB.BTN_COLORS[b.button.color]}"><span>${esc(b.button.label)}</span></button>
         <div class="strip" id="bbStrip"></div>
       </div>
-      <div class="mod mod-keys" id="bbKeys"><span class="led"></span>
-        ${b.keypad.syms.map((k) => `<button class="key" data-key="${k}"><i></i>${BB.SYMS[k]}</button>`).join('')}
+      <div class="mod mod-lock" id="bbKeys"><span class="led"></span>
+        <div class="lock-row">${[0, 1, 2].map((i) => `<div class="wheel"><button data-lk="${i}" data-d="1" aria-label="artır">▲</button><b id="bbD${i}">0</b><button data-lk="${i}" data-d="-1" aria-label="azalt">▼</button></div>`).join('')}
+          <button class="lock-open" id="bbOpen">AÇ</button></div>
       </div>
+      <div class="bb-x hidden" id="bbX">❌</div>
       <div class="bomb-over hidden" id="bbOver"></div>
     </div>`;
   }
   function bindBomb() {
     ui.querySelectorAll('[data-w]').forEach((el) => el.addEventListener('click', () => { if (!el.classList.contains('cut')) { sfx('shot'); gact({ m: 'wire', i: Number(el.dataset.w) }); } }));
-    ui.querySelectorAll('[data-key]').forEach((el) => el.addEventListener('click', () => { sfx('tick'); gact({ m: 'key', i: Number(el.dataset.key) }); }));
+    ui.querySelectorAll('[data-lk]').forEach((el) => el.addEventListener('click', () => { sfx('tick'); gact({ m: 'lock', i: Number(el.dataset.lk), d: Number(el.dataset.d) }); }));
+    $('#bbOpen').addEventListener('click', () => { sfx('pop'); gact({ m: 'open' }); });
     const btn = $('#bbBtn');
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault(); btn.setPointerCapture(e.pointerId);
@@ -92,12 +94,15 @@ export function createBombaci(ctx) {
     $('#bbWires').classList.toggle('solved', b.wireDone);
     $('#bbBtnMod').classList.toggle('solved', b.btnDone);
     $('#bbKeys').classList.toggle('solved', b.keyDone);
-    ui.querySelectorAll('[data-key]').forEach((el) => el.classList.toggle('on', b.pressed.includes(Number(el.dataset.key))));
+    for (let i = 0; i < 3; i++) { const el = $('#bbD' + i); if (el) el.textContent = b.digits[i]; }
     const strip = $('#bbStrip');
     strip.style.background = b.hold && press ? BB.WIRE_COLORS[b.hold.strip] || '#fff' : '';
     strip.classList.toggle('on', !!(b.hold && press));
     $('#bbStrikes').innerHTML = Array.from({ length: BB.MAX_STRIKES }, (_, i) => `<i class="${i < b.strikes ? 'x' : ''}">✗</i>`).join('');
-    if (b.strikes > lastStrikes) { sfx('boom'); shakeT = performance.now() + 450; if (navigator.vibrate) navigator.vibrate(200); }
+    if (b.strikes > lastStrikes) {
+      sfx('boom'); shakeT = performance.now() + 450; if (navigator.vibrate) navigator.vibrate(200);
+      const x = $('#bbX'); if (x) { x.classList.remove('hidden', 'go'); void x.offsetWidth; x.classList.add('go'); clearTimeout(x._t); x._t = setTimeout(() => x.classList.add('hidden'), 900); } // hata: büyük çarpı
+    }
     lastStrikes = b.strikes;
     const over = $('#bbOver');
     if (b.exploded || b.done !== null) {
@@ -121,11 +126,13 @@ export function createBombaci(ctx) {
     const r = s.g.role;
     const t = myTeam();
     let head = '';
-    if (r === 'cozen') head = `<div class="bb-role">🧨 Bombayı <b>sen</b> görüyorsun. ${t.expert ? `<b>${esc(names([t.expert]))}</b> kılavuzu okuyor` : ''}${t.defusers.length > 1 ? ` · aynı bombayı <b>${esc(names(t.defusers.filter((x) => x !== playerId)))}</b> da çözüyor` : ''}. Gördüğünü anlat!</div>`;
+    if (r === 'cozen') head = `<div class="bb-role">🧨 Bombayı <b>sen</b> görüyorsun. ${t.experts && t.experts.length ? `<b>${esc(names(t.experts))}</b> kılavuzu okuyor` : ''}${t.defusers.length > 1 ? ` · aynı bombayı <b>${esc(names(t.defusers.filter((x) => x !== playerId)))}</b> da çözüyor` : ''}. Gördüğünü anlat!</div>`;
     if (r === 'anlatici') head = `<div class="bb-role">📕 <b>Kılavuz sende.</b> Bombayı <b>${esc(names(t.defusers))}</b> görüyor. Ne gördüğünü sor, kurala göre ne yapacağını söyle!</div>`;
     if (r === 'solo') head = `<div class="bb-role">🧨 Takımın tek kişi: bombayı da kılavuzu da sen göreceksin. Sekmeler arasında geç!</div>
       <div class="bb-tabs"><button data-tab="bomb" class="${tab === 'bomb' ? 'on' : ''}">🧨 Bomba</button><button data-tab="man" class="${tab === 'man' ? 'on' : ''}">📕 Kılavuz</button></div>`;
+    const cur = s.g.teams.find((x) => x.id === s.g.turn);
     if (r === 'izle') head = '<div class="bb-role">👀 İzliyorsun</div>';
+    if (r === 'bekle') head = `<div class="bb-role">⏳ Şimdi <b>${esc(names(cur.members))}</b> takımının sırası. Beklerken onları izle, sıra sana gelecek!</div>`;
     ui.innerHTML = head + (r === 'anlatici' ? '<div id="bbLive"></div>' + manualHTML() : '')
       + (r === 'cozen' || r === 'solo' ? `<div class="bb-pane${r === 'solo' && tab !== 'bomb' ? ' hidden' : ''}" data-pane="bomb">${bombHTML(s.g.bomb)}</div>` : '')
       + (r === 'solo' ? `<div class="bb-pane${tab !== 'man' ? ' hidden' : ''}" data-pane="man">${manualHTML()}</div>` : '')
@@ -141,7 +148,17 @@ export function createBombaci(ctx) {
     });
   }
 
-  let dynKey = '';
+  // Tur başında herkese: bu turda kim bombayı görüyor, kim anlatıyor
+  function introHTML(s) {
+    const t = s.g.teams.find((x) => x.id === s.g.turn);
+    const who = (ids) => ids.map((id) => `<span class="bb-pill">${face(id)}<b>${esc(id === playerId ? 'Sen' : pName(id))}</b></span>`).join('');
+    const exp = t.experts || [];
+    return `<div class="bb-intro"><h3>🧨 Sıra bu takımda</h3>
+      <div class="bb-intro-row"><small>🧨 BOMBAYI GÖREN${t.defusers.length > 1 ? 'LER' : ''}</small>${who(t.defusers)}</div>
+      ${exp.length ? `<div class="bb-intro-row"><small>📕 KILAVUZU OKUYAN${exp.length > 1 ? 'LAR' : ''} (tarif eden)</small>${who(exp)}</div>` : '<div class="bb-intro-row"><small>Tek kişisin: bombayı da kılavuzu da sen göreceksin</small></div>'}
+      <p>Diğer takımlar sıralarını bekliyor.</p></div>`;
+  }
+  let dynKey = '', introKey = '';
   const client = {
     kind: 'bombaci',
     supports3D: false,
@@ -187,7 +204,14 @@ export function createBombaci(ctx) {
         }
       }
       const r = s.g.role;
-      if (ctx.serverNow() < s.roundStart) return r === 'anlatici' ? '📕 Kılavuzu oku, ortağına anlat!' : '🧨 Bomba geliyor…';
+      let intro = ui.querySelector('#bbIntro');
+      const showIntro = ctx.serverNow() < s.g.startsAt;
+      if (showIntro) {
+        const ik = `${s.seq}:${s.round}`;
+        if (!intro) { intro = document.createElement('div'); intro.id = 'bbIntro'; ui.appendChild(intro); introKey = ''; }
+        if (introKey !== ik) { introKey = ik; intro.innerHTML = introHTML(s); }
+      } else if (intro) intro.remove();
+      if (showIntro) return r === 'anlatici' ? '📕 Kılavuzu oku, takımına anlat!' : '🧨 Hazırlan…';
       return '';
     },
     hint: () => null,
@@ -195,7 +219,7 @@ export function createBombaci(ctx) {
     panel() { return ''; },
     action: () => null,
     pointer() {},
-    hud() { const s = ctx.state(); const r = s.g && s.g.role; return r === 'anlatici' ? '📕 Anlatıcı' : r === 'cozen' ? '🧨 Çözen' : r === 'solo' ? '🧨 Tek kişi' : '👀 İzleyici'; },
+    hud() { const s = ctx.state(); const r = s.g && s.g.role; return r === 'bekle' ? '⏳ Beklemede' : r === 'anlatici' ? '📕 Anlatıcı' : r === 'cozen' ? '🧨 Çözen' : r === 'solo' ? '🧨 Tek kişi' : '👀 İzleyici'; },
     dispose() { if (press) clearTimeout(press.timer); ui.remove(); },
   };
   return client;

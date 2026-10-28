@@ -26,10 +26,10 @@ export const BODY_R = 0.065;                    // oyuncu gövde/vuruş yarıça
 export const PUSH = 0.5;                        // taşın itme mesafesi
 export const MIN_SCALE = 0.2;                   // platform en fazla bu orana kadar küçülür
 
-// Tur başına platform ölçeği: ilk 6 turda hızlı (%100 → %46), sonra her tur azar azar (-%3,5)
+// Tur başına platform ölçeği: ilk 4 turda hızlı (%100 → %44), sonra her tur -%5
 export const arenaScale = (round) => {
   const r = Math.max(0, round - 1);
-  const s = r <= 6 ? 1 - 0.09 * r : 0.46 - 0.035 * (r - 6);
+  const s = r <= 4 ? 1 - 0.14 * r : 0.44 - 0.05 * (r - 4);
   return Math.max(MIN_SCALE, s);
 };
 

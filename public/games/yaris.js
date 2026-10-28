@@ -8,16 +8,33 @@ export const KIND = 'yaris';
 export const TITLE = 'Pist Canavarı';
 export const EMOJI = '🏎️';
 export const RULES = [
-  'Sol başparmak direksiyon, sağda GAZ ve FREN.',
+  'Solda SOL / SAĞ düğmeleriyle yönlendir, sağda pedallar: GAZ ve FREN.',
   'Pistin dışı uçurum! Düşersen 2,5 sn sonra geri gelirsin.',
+  '❓ kutulardan eşya al, KULLAN ile at: 🥒 Nitro hızlandırır, 🥟 Lazer düz gider, 🧯 Hortum frenini, 🪠 Tıkaç gazını keser, 👻 Hayalet görünmez yapar, 🍌 Muz Kabuğu tuzak bırakır.',
   'Köprüden geç, 3 tur at, çizgiyi ilk geçen kazanır!',
 ];
+
+// ---------- Eşyalar (yol üstündeki ❓ kutulardan) ----------
+// id → { emoji, ad, açıklama }. Sıralama: 1 nitro, 2 füze, 3 fren hortumu, 4 gaz tıkacı.
+export const ITEMS = {
+  1: { emoji: '🥒', name: 'Turşu Nitro', desc: 'Hız patlaması' },
+  2: { emoji: '🥟', name: 'Börek Lazeri', desc: 'Önüne lazer gibi düz gider' },
+  3: { emoji: '🧯', name: 'Fren Hortumu', desc: 'Öndekinin freni çalışmaz' },
+  4: { emoji: '🪠', name: 'Gaz Tıkacı', desc: 'Öndekinin gazı kesilir' },
+  5: { emoji: '👻', name: 'Hayalet Çorbası', desc: 'Görünmez olursun, hedef alınamazsın' },
+  6: { emoji: '🍌', name: 'Muz Kabuğu', desc: 'Arkana tuzak bırakır' },
+};
+export const ITEM_COUNT = 6;
+export const FX = { nogas: 2.5, nobrake: 5, boost: 2.5, spin: 1.1, ghost: 4 }; // etki süreleri (sn)
+export const TRAP_R = 0.6, TRAP_LIFE = 25, TRAP_MAX = 14; // muz kabuğu: çarpma yarıçapı, ömür (sn), en fazla sayı
+export const BOX_R = 0.95;       // kutuyu almak için yarıçap
+export const BOX_RESPAWN = 6;    // kutu yeniden belirir (sn)
 export const LAPS = 3;
-export const CAR_R = 0.42;                     // çarpışma yarıçapı
-const AFTER_FIRST = 20;                        // ilk bitirenden sonra tanınan süre (sn)
-const MAX_RACE = 240;                          // en uzun yarış (sn)
+export const CAR_R = 0.5;                      // çarpışma yarıçapı (arabalar büyük)
+const AFTER_FIRST = 25;                        // ilk bitirenden sonra tanınan süre (sn)
+const MAX_RACE = 520;                          // en uzun yarış (sn)
 export const COUNTDOWN = 3;
-export const HALF_W = 2.4;                     // asfalt yarı genişliği
+export const HALF_W = 4.2;                     // asfalt yarı genişliği (geniş yol)
 export const CURB = 0.4;                       // bordür genişliği
 export const EDGE = 0.3;                       // bordürden sonra düşmeden önce tolerans (araba merkezi için)
 export const FALL_LIMIT = HALF_W + CURB + EDGE; // |d| bunu aşarsa araba uçurumdan düşer
@@ -46,27 +63,47 @@ const smooth = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 // Aday pist şu koşulları sağlayana kadar yeniden üretilir: tek kesişme (köprü), yeterince dik
 // kesişme açısı, keskin olmayan virajlar, kendine çok yaklaşmayan şeritler, makul tur uzunluğu.
 function candidate(R) {
-  const a = 11 + R() * 3.5, b = 7 + R() * 2.5;
-  const H = [];
-  for (let k = 2; k <= 5; k++) H.push([(R() - 0.5) * 2 * (0.17 * a) / k, R() * TAU, k]);
-  const rot = R() * TAU, mir = R() < 0.5 ? -1 : 1;
-  const N = 720, raw = [];
-  for (let i = 0; i < N; i++) {
-    const t = (i / N) * TAU;
-    const x = a * Math.sin(t), y = b * Math.sin(2 * t) / 2;
-    const dx = a * Math.cos(t), dy = b * Math.cos(2 * t);
-    const L = Math.hypot(dx, dy) || 1;
-    let off = 0;
-    for (const [amp, ph, k] of H) off += amp * Math.sin(k * t + ph);
-    const px = x - (dy / L) * off, py = y + (dx / L) * off;
-    const c = Math.cos(rot), s = Math.sin(rot);
-    raw.push([px * c - py * s, mir * (px * s + py * c)]);
+  // Sekiz (papyon) şekli: iki uzun çapraz düzlük (ortada köprü) + iki dikey düzlük. Köşeler keskin ama yuvarlatılmış (yarıçap ~5-6.5),
+  // düzlüklerde hafif şikane (S kıvrımı). Yollar çoğunlukla düz ve uzundur; virajlar azdır ama sert.
+  const H = 32 + R() * 6, W = H * (0.95 + R() * 0.25);
+  const j = () => 1 + (R() - 0.5) * 0.2;
+  const V = [[-W * j(), -H * j()], [W * j(), H * j()], [W * j(), -H * j()], [-W * j(), H * j()]];
+  const nodes = [];
+  for (let i = 0; i < 4; i++) {
+    const a = V[i], b = V[(i + 1) % 4];
+    nodes.push({ p: a, r: 7 + R() * 2 });
+    const diag = i % 2 === 0;
+    if (diag && R() < 0.7) { // şikane: köşelerden ve köprüden uzak iki kıvrım
+      const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L, off = (2 + R() * 2) * (R() < 0.5 ? -1 : 1);
+      const f1 = 0.34 + R() * 0.04, f2 = f1 + 0.24;
+      nodes.push({ p: [a[0] + dx * f1 + nx * off, a[1] + dy * f1 + ny * off], r: 12 + R() * 4 });
+      nodes.push({ p: [a[0] + dx * f2 - nx * off, a[1] + dy * f2 - ny * off], r: 12 + R() * 4 });
+    }
   }
-  // tur uzunluğunu hedefe ölçekle
-  let P = 0;
-  for (let i = 0; i < N; i++) { const p = raw[i], q = raw[(i + 1) % N]; P += Math.hypot(q[0] - p[0], q[1] - p[1]); }
-  const sc = (96 + R() * 24) / P;
-  return raw.map(([x, y]) => [x * sc, y * sc]);
+  const raw = fillet(nodes);
+  const rot = R() * TAU, mir = R() < 0.5 ? -1 : 1, c = Math.cos(rot), s = Math.sin(rot);
+  return raw.map(([x, y]) => [x * c - y * s, mir * (x * s + y * c)]);
+}
+// Çokgenin köşelerini yay ile yuvarlar (her köşenin kendi yarıçapı; komşu kenara sığmazsa küçülür)
+function fillet(nodes) {
+  const n = nodes.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const p = nodes[i].p, pr = nodes[(i - 1 + n) % n].p, nx = nodes[(i + 1) % n].p;
+    let ux = pr[0] - p[0], uy = pr[1] - p[1], vx = nx[0] - p[0], vy = nx[1] - p[1];
+    const lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy); ux /= lu; uy /= lu; vx /= lv; vy /= lv;
+    const phi = Math.acos(Math.max(-1, Math.min(1, ux * vx + uy * vy)));         // iç açı
+    if (phi > Math.PI - 0.02) { out.push(p); continue; }                          // neredeyse düz
+    let r = nodes[i].r, t = r / Math.tan(phi / 2);
+    const tmax = 0.46 * Math.min(lu, lv); if (t > tmax) { t = tmax; r = t * Math.tan(phi / 2); }
+    const t1 = [p[0] + ux * t, p[1] + uy * t], t2 = [p[0] + vx * t, p[1] + vy * t];
+    let bx = ux + vx, by = uy + vy; const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl;
+    const cd = r / Math.sin(phi / 2), cx = p[0] + bx * cd, cy = p[1] + by * cd;
+    let a1 = Math.atan2(t1[1] - cy, t1[0] - cx), a2 = Math.atan2(t2[1] - cy, t2[0] - cx), da = a2 - a1;
+    while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+    const steps = Math.max(4, Math.ceil(Math.abs(da) * r / DS));
+    for (let k = 0; k <= steps; k++) { const a = a1 + (da * k) / steps; out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+  }
+  return out;
 }
 // Kapalı eğriyi eşit aralıklı (DS) örnekle
 function resample(raw) {
@@ -103,7 +140,7 @@ export const GEN_STATS = {};
 const rej = (r) => { GEN_STATS[r] = (GEN_STATS[r] || 0) + 1; return null; };
 function validate(tr) {
   const { pts, n, ds, L } = tr;
-  if (L < 88 || L > 130) return rej('len');
+  if (L < 250 || L > 440) return rej('len');
   const kap = curvature(pts, ds);
   for (let i = 0; i < n; i++) if (kap[i] > 0.21) return rej('kap');
   // kesişmeler
@@ -120,7 +157,7 @@ function validate(tr) {
   const aB = Math.atan2(pts[(X.j + 1) % n][1] - pts[X.j][1], pts[(X.j + 1) % n][0] - pts[X.j][0]);
   let ang = Math.abs(angN(aA - aB)); if (ang > Math.PI / 2) ang = Math.PI - ang;
   if (ang < Math.PI * 0.31) return rej('ang');                 // ~56°'den dar kesişme olmasın
-  if (Math.min(Math.abs(X.sA - X.sB), L - Math.abs(X.sA - X.sB)) < 38) return rej('near');
+  if (Math.min(Math.abs(X.sA - X.sB), L - Math.abs(X.sA - X.sB)) < 90) return rej('near');
   // kendine yaklaşma (kesişme bölgesi hariç)
   const minD = (HALF_W + CURB) * 2 + 1.4, minD2 = minD * minD, far = Math.round(16 / ds), zone = 11;
   const nearX = (s) => Math.min(Math.abs(s - X.sA), L - Math.abs(s - X.sA), Math.abs(s - X.sB), L - Math.abs(s - X.sB)) < zone;
@@ -214,9 +251,29 @@ export function buildTrack(seed) {
   track.grid = [];
   for (let i = 0; i < 10; i++) { const o = track.offset(-1.8 - Math.floor(i / 2) * 1.35, (i % 2 ? 1 : -1) * 1.0); track.grid.push([o.x, o.y, o.a, -1.8 - Math.floor(i / 2) * 1.35, (i % 2 ? 1 : -1) * 1.0]); }
   racingLine(track);
+  track.boxes = makeBoxes(track);
   CACHE.set(seed, track);
   if (CACHE.size > 12) CACHE.delete(CACHE.keys().next().value);
   return track;
+}
+
+// Eşya kutuları: tek tek, pist boyunca dağınık ve farklı şeritlerde (sıra sıra değil). Başlangıç ızgarası ve köprü bölgesinde yok. Tohumdan, herkeste aynı yer.
+function makeBoxes(track) {
+  const { length: L, bridge: br } = track;
+  const R = rng((track.seed ^ 0x77aa55) >>> 0);
+  const slots = Math.max(9, Math.round(L / 12));
+  const lanes = [-0.72, -0.36, 0, 0.36, 0.72];
+  const near = (s, c, w) => Math.abs(track.wrap(s - c)) < w;
+  const out = [];
+  let last = -1;
+  for (let k = 0; k < slots; k++) {
+    const s = (k + 0.5 + (R() - 0.5) * 0.7) * L / slots;
+    if (near(s, br.s, br.span + 3) || near(s, br.lowS, br.span + 3) || s < 16 || s > L - 8) continue;
+    let li; do { li = Math.floor(R() * lanes.length); } while (li === last); last = li; // ardışık kutular farklı şeritte
+    const d = lanes[li] * HALF_W, o = track.offset(s, d);
+    out.push({ s, d, x: o.x, y: o.y, z: o.z });
+  }
+  return out;
 }
 
 // Botlar için yarış çizgisi (yanal kayma) ve hedef hız profili
@@ -281,14 +338,19 @@ export function createSim(players, g) {
       s, d, z: 0, prog: track.wrap(s), done: null, lap: 1, hit: 0,
       fall: null, inv: 0, safeS: s, safeD: d,
       skill: p.bot ? 0.9 + R() * 0.07 : 1, lane: (R() - 0.5) * 1.1, react: 0.9 + R() * 0.5,
+      item: 0, itemT: 0, fx: { nogas: 0, nobrake: 0, boost: 0, spin: 0, ghost: 0 },
     };
   });
-  return { t: 0, phase: 'wait', cd: COUNTDOWN, cars, firstDone: null, events: [], seed, track };
+  return { t: 0, phase: 'wait', cd: COUNTDOWN, cars, firstDone: null, events: [], seed, track, boxes: track.boxes.map(() => 0), proj: [], traps: [], R: rng(seed ^ 0xa5a5a5a5) };
 }
 export const startCountdown = (sim) => { if (sim.phase === 'wait') { sim.phase = 'count'; sim.cd = COUNTDOWN; } };
 
 function stepCar(car, inp, dt, sim) {
   const track = sim.track;
+  // eşya etkilerinin süreleri düşerken de akar
+  const ef = car.fx;
+  for (const k of ['nogas', 'nobrake', 'boost', 'spin', 'ghost']) if (ef[k] > 0) ef[k] = Math.max(0, ef[k] - dt);
+  if (car.item) car.itemT += dt;
   if (car.fall !== null) {
     // uçurumdan düşüyor: ileri süzülür, aşağı iner, sonra son güvenli yerinde doğar
     car.fall += dt;
@@ -314,16 +376,20 @@ function stepCar(car, inp, dt, sim) {
   let vf = car.vx * fx + car.vy * fy, vs = car.vx * rx + car.vy * ry;
   const curb = Math.abs(car.d) > HALF_W;
   const racing = sim.phase === 'race' && car.done === null;
-  const gas = racing && inp.gas, brake = racing && inp.brake;
-  if (gas) vf += PHY.accel * dt * (vf < 0 ? 2 : 1);
+  // eşya etkileri: süreler azalır; füze yiyen (spin) kontrolü kaybeder; nitro hızlandırır; tıkaç gazı, hortum frenini keser
+  const spin = ef.spin > 0, boost = ef.boost > 0;
+  const gas = racing && !spin && ((inp.gas && ef.nogas <= 0) || boost);
+  const brake = racing && !spin && inp.brake && ef.nobrake <= 0;
+  if (spin) vf -= vf * 2.2 * dt;
+  if (gas) vf += PHY.accel * (boost ? 2.2 : 1) * dt * (vf < 0 ? 2 : 1);
   if (brake) vf = vf > 0.3 ? vf - PHY.brake * dt : Math.max(-PHY.reverse, vf - PHY.accel * 0.6 * dt);
   if (!gas && !brake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 2.2 * dt); // motor freni
   vf -= vf * (PHY.drag + (curb ? PHY.curbDrag : 0)) * dt;
-  const max = (curb ? PHY.curbMax : PHY.max) * car.skill;
+  const max = (curb ? PHY.curbMax : PHY.max) * car.skill * (boost ? 1.45 : 1);
   if (vf > max) vf -= (vf - max) * Math.min(1, 4 * dt);
   if (car.done !== null) vf -= vf * 1.5 * dt;
   // direksiyon: duruyorken dönmez, hızlanınca biraz azalır; geri giderken ters
-  car.steer += ((inp.steer || 0) - car.steer) * Math.min(1, 14 * dt);
+  car.steer += ((spin ? 0 : inp.steer || 0) - car.steer) * Math.min(1, 14 * dt);
   const k = Math.min(1, Math.abs(vf) / 2.2) * (1 - 0.3 * Math.min(1, Math.abs(vf) / PHY.max));
   car.h += car.steer * PHY.steer * k * Math.sign(vf) * dt;
   vs *= Math.exp(-(curb ? PHY.curbGrip : PHY.grip) * dt);
@@ -369,6 +435,111 @@ function collide(sim) {
   }
 }
 
+// ---------- Eşyalar ----------
+// Ağırlıklar [nitro, füze, hortum, tıkaç, hayalet, muz]. Lider füze bulmaz (önünde kimse yok) ama diğer her şeyi bulur
+// (hortum/tıkaç/muz arkadakilere gider); geride kalan daha çok nitro ve füze bulur.
+function rollItem(sim, car) {
+  const order = standings(sim), r = order.indexOf(car.id), n = order.length;
+  const back = n > 1 ? Math.max(0, r) / (n - 1) : 0;
+  const w = r <= 0 ? [1, 0, 1, 1, 1.2, 1.4] : [0.8 + back * 0.9, 1.5, 1, 1, 0.8, 1];
+  let x = sim.R() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < w.length; i++) { x -= w[i]; if (x < 0) return i + 1; }
+  return 1;
+}
+// Hortum/tıkaç hedefi: önümüzdeki en yakın araç; yoksa arkamızdaki en yakın araç. Görünmez (hayalet) araçlar hedef alınamaz.
+export function targetOf(sim, car) {
+  let ahead = null, ad = Infinity, behind = null, bd = Infinity;
+  for (const o of Object.values(sim.cars)) {
+    if (o === car || o.fall !== null || o.done !== null || o.fx.ghost > 0) continue;
+    const d = o.prog - car.prog;
+    if (d > 0 && d < ad) { ad = d; ahead = o; }
+    else if (d <= 0 && -d < bd) { bd = -d; behind = o; }
+  }
+  return ahead || behind;
+}
+function collectBoxes(sim, dt) {
+  const boxes = sim.track.boxes;
+  for (let i = 0; i < boxes.length; i++) {
+    if (sim.boxes[i] > 0) { sim.boxes[i] = Math.max(0, sim.boxes[i] - dt); continue; }
+    const b = boxes[i];
+    for (const c of Object.values(sim.cars)) {
+      if (c.item || c.fall !== null || c.done !== null) continue;
+      if (Math.hypot(c.x - b.x, c.y - b.y) > BOX_R || Math.abs(c.z - b.z) > 0.7) continue;
+      c.item = rollItem(sim, c); c.itemT = 0; sim.boxes[i] = BOX_RESPAWN;
+      sim.events.push({ e: 'pickup', id: c.id, item: c.item, x: b.x, y: b.y });
+      break;
+    }
+  }
+}
+function useItem(sim, car) {
+  const it = car.item;
+  if (!it || car.fall !== null || car.done !== null || car.fx.spin > 0) return;
+  if (it === 1) car.fx.boost = FX.boost;
+  else if (it === 2) {
+    sim.proj.push({ by: car.id, x: car.x + Math.cos(car.h) * 0.8, y: car.y + Math.sin(car.h) * 0.8, h: car.h, v: 18 + Math.max(0, car.sp) * 0.5, life: 3.2, z: car.z });
+    sim.events.push({ e: 'fire', id: car.id, x: car.x, y: car.y, h: car.h });
+  } else if (it === 5) car.fx.ghost = FX.ghost;
+  else if (it === 6) {
+    sim.traps.push({ by: car.id, x: car.x - Math.cos(car.h) * 0.9, y: car.y - Math.sin(car.h) * 0.9, z: car.z, life: TRAP_LIFE, age: 0 });
+    while (sim.traps.length > TRAP_MAX) sim.traps.shift();
+    sim.events.push({ e: 'trap', id: car.id, x: car.x, y: car.y });
+  } else {
+    const tg = targetOf(sim, car);
+    if (!tg) { sim.events.push({ e: 'noTarget', id: car.id }); return; } // kimse yok: eşya harcanmaz
+    if (it === 3) tg.fx.nobrake = FX.nobrake; else tg.fx.nogas = FX.nogas;
+    sim.events.push({ e: 'hit', id: tg.id, by: car.id, item: it, x: tg.x, y: tg.y });
+  }
+  car.item = 0; car.itemT = 0;
+  sim.events.push({ e: 'use', id: car.id, item: it });
+}
+// Füzeler: yönüne düz gider, ilk arabaya çarpınca onu döndürür ve yavaşlatır
+function stepProj(sim, dt) {
+  const keep = [];
+  for (const p of sim.proj) {
+    p.life -= dt;
+    if (p.life <= 0) continue;
+    const mx = Math.cos(p.h) * p.v * dt, my = Math.sin(p.h) * p.v * dt;
+    let hit = null;
+    for (let sub = 1; sub <= 2 && !hit; sub++) {
+      const qx = p.x + mx * sub / 2, qy = p.y + my * sub / 2;
+      for (const c of Object.values(sim.cars)) {
+        if (c.id === p.by || c.fall !== null || c.inv > 0 || c.done !== null || c.fx.ghost > 0 || Math.abs(c.z - p.z) > 0.9) continue;
+        if (Math.hypot(c.x - qx, c.y - qy) < CAR_R + 0.25) { hit = c; break; }
+      }
+    }
+    p.x += mx; p.y += my;
+    if (hit) {
+      hit.fx.spin = FX.spin; hit.vx *= 0.35; hit.vy *= 0.35; hit.sp *= 0.35;
+      sim.events.push({ e: 'hit', id: hit.id, by: p.by, item: 2, x: hit.x, y: hit.y });
+      continue;
+    }
+    keep.push(p);
+  }
+  sim.proj = keep;
+}
+
+// 🍌 Muz kabukları: üstünden geçen araç (hayalet hariç) döner; sahibi ilk 2 sn kendi tuzağına basmaz
+function stepTraps(sim, dt) {
+  const keep = [];
+  for (const t of sim.traps) {
+    t.life -= dt; t.age += dt;
+    if (t.life <= 0) continue;
+    let hit = null;
+    for (const c of Object.values(sim.cars)) {
+      if (c.fall !== null || c.done !== null || c.inv > 0 || c.fx.ghost > 0 || Math.abs(c.z - t.z) > 0.7) continue;
+      if (c.id === t.by && t.age < 2) continue;
+      if (Math.hypot(c.x - t.x, c.y - t.y) < CAR_R + TRAP_R * 0.7) { hit = c; break; }
+    }
+    if (hit) {
+      hit.fx.spin = FX.spin * 0.85; hit.vx *= 0.5; hit.vy *= 0.5; hit.sp *= 0.5;
+      sim.events.push({ e: 'hit', id: hit.id, by: t.by, item: 6, x: hit.x, y: hit.y });
+      continue;
+    }
+    keep.push(t);
+  }
+  sim.traps = keep;
+}
+
 // Sabit adımlı simülasyon (oda sahibinin cihazında çalışır)
 export function stepSim(sim, dt, inputs) {
   sim.events = [];
@@ -381,9 +552,11 @@ export function stepSim(sim, dt, inputs) {
   }
   for (const car of Object.values(sim.cars)) {
     const inp = car.bot ? botInput(sim, car) : inputs[car.id] || {};
+    if (inp.bomb && sim.phase === 'race') useItem(sim, car); // bomb = "eşyayı kullan" (tek basış)
     stepCar(car, inp, dt, sim);
   }
   collide(sim);
+  if (sim.phase === 'race') { collectBoxes(sim, dt); stepProj(sim, dt); stepTraps(sim, dt); }
   if (sim.phase === 'race') {
     const all = Object.values(sim.cars);
     const allDone = all.every((c) => c.done !== null);
@@ -429,10 +602,27 @@ export function botInput(sim, car) {
     const side = -dx * Math.sin(car.h) + dy * Math.cos(car.h);
     if (Math.abs(side) < 0.8) { vt = Math.min(vt, Math.max(0, o.sp) + 0.3); diff += (side > 0 ? -0.35 : 0.35) * (1 - d / 2.4); }
   }
+  // eşya: biraz düşündükten sonra kullanır (nitro düzlükte, füze hizalıyken, hortum/tıkaç hedef yakınken, hayalet yakında rakip varken, muz arkada rakip varken)
+  let bomb = false;
+  if (car.item && car.itemT > 1 + car.react * 0.8 && car.fx.spin <= 0) {
+    const near = (lim) => Object.values(sim.cars).some((o) => o !== car && o.fall === null && o.done === null && Math.hypot(o.x - car.x, o.y - car.y) < lim);
+    const behindClose = Object.values(sim.cars).some((o) => o !== car && o.fall === null && o.done === null && car.prog - o.prog > 0 && car.prog - o.prog < 12);
+    if (car.item === 1) bomb = Math.abs(diff) < 0.3;
+    else if (car.item === 2) {
+      for (const o of Object.values(sim.cars)) {
+        if (o === car || o.fall !== null || o.done !== null || o.fx.ghost > 0) continue;
+        const dx = o.x - car.x, dy = o.y - car.y, fwd = dx * Math.cos(car.h) + dy * Math.sin(car.h), side = -dx * Math.sin(car.h) + dy * Math.cos(car.h);
+        if (fwd > 2 && fwd < 30 && Math.abs(side) < 1.0) { bomb = true; break; }
+      }
+    } else if (car.item === 5) bomb = near(14);
+    else if (car.item === 6) bomb = behindClose;
+    else { const tg = targetOf(sim, car); bomb = !!tg && Math.abs(tg.prog - car.prog) < 35; }
+  }
   return {
     steer: Math.max(-1, Math.min(1, diff * 2.6)),
     gas: sp < vt - 0.1 && Math.abs(diff) < 1.3,
     brake: sp > vt + 0.45 || (Math.abs(diff) > 1.4 && sp > 2),
+    bomb,
   };
 }
 
@@ -441,13 +631,16 @@ const r2 = (v) => Math.round(v * 100) / 100;
 export function snapshot(sim) {
   return {
     t: r2(sim.t), ph: sim.phase, cd: r2(sim.cd), sd: sim.seed,
-    c: Object.values(sim.cars).map((c) => [c.id, r2(c.x), r2(c.y), r2(c.h), r2(c.sp), r2(c.prog), c.done === null ? -1 : r2(c.done), r2(c.steer), r2(c.slip || 0), r2(c.z), c.fall === null ? -1 : r2(c.fall), r2(c.inv), r2(c.d), r2(c.s)]),
+    c: Object.values(sim.cars).map((c) => [c.id, r2(c.x), r2(c.y), r2(c.h), r2(c.sp), r2(c.prog), c.done === null ? -1 : r2(c.done), r2(c.steer), r2(c.slip || 0), r2(c.z), c.fall === null ? -1 : r2(c.fall), r2(c.inv), r2(c.d), r2(c.s), c.item, r2(c.fx.nogas), r2(c.fx.nobrake), r2(c.fx.boost), r2(c.fx.spin), r2(c.fx.ghost)]),
+    tp: sim.traps.map((t) => [r2(t.x), r2(t.y)]),
+    bx: sim.boxes.map((t) => (t > 0 ? 0 : 1)).join(''),
+    pj: sim.proj.map((p) => [r2(p.x), r2(p.y), r2(p.h)]),
     ev: sim.events,
   };
 }
 export function readSnapshot(s) {
   const cars = {};
   const L = buildTrack(s.sd).length;
-  for (const [id, x, y, h, sp, prog, done, steer, slip, z, fall, inv, d, sv] of s.c) cars[id] = { id, x, y, h, sp, prog, done: done < 0 ? null : done, steer, slip, z, fall: fall < 0 ? null : fall, inv, d, s: sv, lap: Math.max(1, Math.min(LAPS, Math.floor(prog / L) + 1)) };
-  return { t: s.t, phase: s.ph, cd: s.cd, seed: s.sd, cars, events: s.ev || [] };
+  for (const [id, x, y, h, sp, prog, done, steer, slip, z, fall, inv, d, sv, item, nogas, nobrake, boost, spin, ghost] of s.c) cars[id] = { id, x, y, h, sp, prog, done: done < 0 ? null : done, steer, slip, z, fall: fall < 0 ? null : fall, inv, d, s: sv, lap: Math.max(1, Math.min(LAPS, Math.floor(prog / L) + 1)), item: item || 0, fx: { nogas: nogas || 0, nobrake: nobrake || 0, boost: boost || 0, spin: spin || 0, ghost: ghost || 0 } };
+  return { t: s.t, phase: s.ph, cd: s.cd, seed: s.sd, cars, boxes: (s.bx || '').split('').map((c) => c === '1'), proj: s.pj || [], traps: s.tp || [], events: s.ev || [] };
 }

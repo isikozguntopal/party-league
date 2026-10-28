@@ -7,14 +7,20 @@
   "scripts": {
     "dev": "node dev-server.mjs",
     "test": "node test/run.mjs",
-    "build:three": "node scripts/build-three.mjs"
+    "build:three": "node scripts/build-three.mjs",
+    "dev:cf": "wrangler dev --port 8787 --local",
+    "deploy:cf": "wrangler deploy"
   },
   "dependencies": {
+    "@capacitor/core": "^6.2.2",
+    "@capacitor/ios": "^6.2.2",
     "@netlify/blobs": "^11.1.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.2",
     "netlify-cli": "^27.10.2",
-    "three": "0.186.1"
+    "three": "0.186.1",
+    "wrangler": "^4.154.0"
   },
   "overrides": {
     "esbuild": "npm:esbuild-wasm@0.28.1"

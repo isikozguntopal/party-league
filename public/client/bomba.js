@@ -269,7 +269,7 @@ export function createBomba(ctx) {
   }
 
   const spec = {
-    kind: 'bomba', mod: B, views: ['top', 'chase', 'fps'],
+    kind: 'bomba', mod: B, views: ['top'],
     controls: { left: 'stick', below: true, buttons: [{ id: 'bomb', label: '💣', cls: 'bomb' }] },
     input(c, view) {
       const bomb = !!(c.pressed.bomb || c.btn.bomb);

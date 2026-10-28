@@ -1,13 +1,29 @@
 // Gerçek zamanlı oyunlar için WebRTC ağı (yıldız yapısı: oda sahibi ↔ her oyuncu).
 // Bağlantı kurulumu (offer/answer) mevcut sunucu üzerinden 'sig' mesajlarıyla yapılır; sonra veri
 // doğrudan telefonlar arasında akar. İki kanal: 'u' (hızlı, kayıplı: konum/kumanda) ve 'r' (güvenli: olaylar).
-// STUN + ücretsiz TURN (Open Relay): operatör ağlarında doğrudan bağlantı kurulamazsa TURN üzerinden aktarılır
-const ICE = [
+// STUN her zaman var. Operatör ağlarında doğrudan bağlantı kurulamazsa TURN gerekir: sunucu `ice` eylemiyle (Cloudflare TURN)
+// kısa ömürlü kimlik bilgisi verir; anahtar tanımlı değilse yalnızca STUN kalır ve bağlanamayanlar sunucu aktarımına düşer.
+// (Eski ücretsiz openrelay.metered.ca TURN'u kapatıldı: adresi 192.0.2.1'e çözülüyor, bu yüzden kaldırıldı.)
+const STUN = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443'], username: 'openrelayproject', credential: 'openrelayproject' },
 ];
-const RETRY_MS = 9000, MAX_TRIES = 3;
+let ICE = STUN;
+let iceReady = Promise.resolve(), iceAt = 0;
+// call: ctx.call. Kısa ömürlü kimlik bilgisini önceden yükler; hata olursa sessizce STUN ile devam eder.
+export function loadIce(call) {
+  if (!call || Date.now() - iceAt < 20 * 60 * 1000) return iceReady;
+  iceAt = Date.now();
+  iceReady = Promise.race([
+    call({ action: 'ice' }).then((r) => {
+      const list = r && Array.isArray(r.iceServers) ? r.iceServers.filter((s) => s && s.urls) : [];
+      ICE = list.length ? STUN.concat(list) : STUN;
+    }),
+    new Promise((res) => setTimeout(res, 2500)),
+  ]).catch(() => { ICE = STUN; });
+  return iceReady;
+}
+const RETRY_MS = 5000, MAX_TRIES = 4;
 
 function gathered(pc, ms) {
   return new Promise((res) => {
@@ -37,6 +53,7 @@ export function createNet({ me, hostId, peers, send, onMessage, onChange }) {
   }
 
   async function offer(id) {
+    await iceReady;
     const prev = conns.get(id);
     if (prev) try { prev.pc.close(); } catch {}
     const c = { pc: new RTCPeerConnection({ iceServers: ICE }), state: 'connecting', tries: (prev ? prev.tries : 0) + 1, t0: performance.now() };
@@ -45,12 +62,13 @@ export function createNet({ me, hostId, peers, send, onMessage, onChange }) {
     setDc(c.pc.createDataChannel('u', { ordered: false, maxRetransmits: 0 }));
     setDc(c.pc.createDataChannel('r'));
     await c.pc.setLocalDescription(await c.pc.createOffer());
-    await gathered(c.pc, 4000);
+    await gathered(c.pc, 2000);
     if (closed) return;
     send(id, { type: 'offer', sdp: c.pc.localDescription.sdp, n: c.tries });
   }
 
   async function answer(from, msg) {
+    await iceReady;
     const prev = conns.get(from);
     if (prev) try { prev.pc.close(); } catch {}
     const c = { pc: new RTCPeerConnection({ iceServers: ICE }), state: 'connecting', tries: msg.n, t0: performance.now() };
@@ -58,7 +76,7 @@ export function createNet({ me, hostId, peers, send, onMessage, onChange }) {
     wire(from, c);
     await c.pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
     await c.pc.setLocalDescription(await c.pc.createAnswer());
-    await gathered(c.pc, 4000);
+    await gathered(c.pc, 2000);
     if (closed) return;
     send(from, { type: 'answer', sdp: c.pc.localDescription.sdp, n: msg.n });
   }

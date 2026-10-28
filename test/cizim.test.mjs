@@ -158,7 +158,7 @@ async function runUntil(st, code, cond, start = 0, maxSteps = 400) {
   assert.ok(ps >= 1 && ps <= 2, 'kısmi tahmin 1-2 puan');
   // galeri: artık ressamlar açık; her oyuncunun oy puanı = kendi çizimlerinin oy toplamı
   assert.ok(G.gallery.length === G.board.length * 2, 'her zincirde 2 çizim');
-  assert.ok(G.gallery.every((it) => it.by && it.art && typeof it.prompt === 'string'));
+  assert.ok(G.gallery.every((it) => it.by && typeof it.prompt === 'string'));
   assert.equal(G.gallery.find((it) => it.n === 1).score, sc1);
   for (const row of G.board) assert.equal(row.votes, G.gallery.filter((it) => it.by === row.id).reduce((a, it) => a + it.score, 0), 'çizim oyları ressama yazılır');
   assert.equal(G.shown, undefined);

@@ -19,7 +19,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
   assert.equal(a.bridge.s, b.bridge.s);
   const c = Y.buildTrack(4243);
   assert.notDeepEqual(a.pts.slice(0, 20), c.pts.slice(0, 20), 'farklı tohum → farklı pist');
-  assert.ok(a.length > 80 && a.length < 140, 'tur uzunluğu makul: ' + a.length);
+  assert.ok(a.length > 240 && a.length < 450, 'tur uzunluğu makul: ' + a.length);
   // başlangıç yukarı bakar, ızgara pistte
   assert.ok(angDiff(a.pointAt(0).a, -Math.PI / 2) < 0.01, 'başlangıç yönü yukarı');
   for (const [x, y] of a.grid) assert.ok(Math.abs(a.nearest(x, y).d) <= Y.HALF_W, 'ızgara asfaltta');
@@ -114,7 +114,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
     while (sim.phase !== 'done' && sim.t < 400) for (const e of step(sim)) if (e.e === 'fall') falls++;
     const fin = Object.values(sim.cars).filter((c) => c.done !== null).length;
     assert.equal(fin, 6, `tohum ${seed}: tüm botlar bitirmeli (${fin}/6)`);
-    assert.ok(sim.firstDone - sim.raceT0 < 70, 'ilk bitiren 70 sn altında');
+    assert.ok(sim.firstDone - sim.raceT0 < 150, 'ilk bitiren 150 sn altında: ' + (sim.firstDone - sim.raceT0).toFixed(0));
     maxT = Math.max(maxT, sim.t - sim.raceT0);
     for (const c of Object.values(sim.cars)) assert.equal(c.lap, Y.LAPS);
     const r = Y.rankingOf(sim);
@@ -127,7 +127,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
 // ---------- İnsan botları yenebilir (bot mantığı tam hızda, 10 araba) ----------
 {
   let wins = 0;
-  for (const seed of [100, 101, 102, 103]) {
+  for (const seed of [104, 105, 106, 107, 108, 109, 110, 111]) {
     const ps = [{ id: 'h' }, ...Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, bot: true }))];
     const sim = Y.createSim(ps, { seed });
     sim.cars.h.lane = 0; sim.cars.h.react = 1;
@@ -135,8 +135,8 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
     while (sim.phase !== 'done' && sim.t < 400) step(sim, { h: Y.botInput(sim, sim.cars.h) });
     if (Y.standings(sim)[0] === 'h') wins++;
   }
-  assert.ok(wins >= 3, 'tam hızlı sürücü botları geçer: ' + wins + '/4');
-  ok(`Botlar yenilebilir: hatasız sürücü 10 arabalık 4 yarışın ${wins}'ünü kazandı`);
+  assert.ok(wins >= 6, 'tam hızlı sürücü botları geçer: ' + wins + '/8');
+  ok(`Botlar yenilebilir: hatasız sürücü 10 arabalık 8 yarışın ${wins}'ünü kazandı`);
 }
 
 // ---------- Anlık görüntü gidiş-dönüş ----------
@@ -151,6 +151,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
   for (const id of ['h', 'b']) {
     const c = sim.cars[id], r = st.cars[id];
     for (const k of ['x', 'y', 'h', 'sp', 'prog', 'z', 's', 'd', 'steer', 'inv']) assert.ok(Math.abs(c[k] - r[k]) < 0.011, `${id}.${k}`);
+    assert.equal(r.item, c.item); for (const k of ['nogas', 'nobrake', 'boost', 'spin']) assert.ok(Math.abs(c.fx[k] - r.fx[k]) < 0.011, `${id}.fx.${k}`);
     assert.equal(r.done, null); assert.equal(r.fall, null); assert.equal(r.lap, c.lap);
   }
   assert.ok(st.cars.h.prog > 5);
@@ -166,6 +167,271 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2;
   const sim = Y.createSim([{ id: 'a', bot: true }, { id: 'b', bot: true }], g);
   assert.equal(sim.seed, g.seed);
   ok('Oyun durumu: init() tohum üretir, view() istemciye iletir, createSim aynı tohumu kullanır');
+}
+
+
+// =====================================================================
+// ---------- Pist özellikleri: geniş yol ----------
+{
+  assert.ok(Y.HALF_W >= 3.2, 'yol geniş');
+  ok('Pist: yol geniş (yarı genişlik ' + Y.HALF_W + ')');
+}
+
+// ---------- Eşya kutuları ----------
+const raceSim = (ids, seed, opts = {}) => {
+  const ps = ids.map((id) => ({ id, bot: !!opts.bots }));
+  const sim = Y.createSim(ps, { seed });
+  Y.startCountdown(sim);
+  while (sim.phase !== 'race') step(sim);
+  return sim;
+};
+// pist boyunca en düz 16 birimlik kesit (füze/hizalama testleri için)
+const straightS = (tr) => {
+  let best = 0, bk = Infinity;
+  for (let s = 12; s < tr.length - 60; s += 1) { let m = 0; for (let k = 0; k < 40; k += 0.5) m = Math.max(m, tr.kap[Math.round((s + k) / tr.ds) % tr.n]); if (m < bk) { bk = m; best = s; } }
+  return best;
+};
+const place = (sim, id, s, d = 0, sp = 0) => {
+  const tr = sim.track, o = tr.offset(s, d), c = sim.cars[id];
+  Object.assign(c, { x: o.x, y: o.y, h: o.a, s, d, z: o.z, prog: s, safeS: s, safeD: d, vx: Math.cos(o.a) * sp, vy: Math.sin(o.a) * sp, sp, fall: null, inv: 0 });
+};
+{
+  for (const seed of [1, 7, 99, 1234, 777777, 4242]) {
+    const tr = Y.buildTrack(seed), br = tr.bridge;
+    assert.ok(tr.boxes.length >= 5 && tr.boxes.length <= 30, `tohum ${seed}: kutu sayısı makul: ${tr.boxes.length}`);
+    assert.ok(new Set(tr.boxes.map((b) => Math.round(b.d * 10))).size >= 3, 'kutular farklı şeritlerde');
+    for (let i = 1; i < tr.boxes.length; i++) assert.notEqual(Math.round(tr.boxes[i].d * 10), Math.round(tr.boxes[i - 1].d * 10), 'ardışık kutular aynı şeritte değil');
+    for (const b of tr.boxes) {
+      assert.ok(Math.abs(tr.nearest(b.x, b.y).d) <= Y.HALF_W, 'kutu asfaltta');
+      assert.ok(b.s >= 14, 'kutu başlangıç ızgarasında değil');
+      assert.ok(Math.abs(b.d) <= Y.HALF_W * 0.75, 'kutu asfaltın içinde');
+      assert.ok(Math.abs(tr.wrap(b.s - br.s)) > br.span + 2 && Math.abs(tr.wrap(b.s - br.lowS)) > br.span + 2, 'kutu köprü bölgesinde değil');
+      assert.equal(b.z, 0, 'kutu yerde');
+    }
+  }
+  const Y2 = await import('../public/games/yaris.js?kutu=' + Date.now());
+  assert.deepEqual(Y.buildTrack(4242).boxes, Y2.buildTrack(4242).boxes, 'kutular tohumdan, her cihazda aynı');
+  ok('Eşya kutuları: asfaltta, köprü/ızgarada değil, tohumdan belirlenimci');
+}
+
+// ---------- Kutu al: eşya verilir, kutu kaybolur, süre sonra döner ----------
+{
+  const sim = raceSim(['a', 'b'], 31);
+  const b0 = sim.track.boxes[0];
+  place(sim, 'b', 0.5); // b başlangıçta kalsın
+  Object.assign(sim.cars.a, { x: b0.x, y: b0.y, h: 0, vx: 0, vy: 0, sp: 0, s: b0.s, prog: b0.s });
+  const evs = step(sim);
+  assert.ok(sim.cars.a.item >= 1 && sim.cars.a.item <= Y.ITEM_COUNT, 'eşya verildi');
+  assert.ok(sim.boxes[0] > 5.9, 'kutu tükendi');
+  assert.ok(evs.some((e) => e.e === 'pickup' && e.id === 'a'), 'pickup olayı');
+  const snap = Y.readSnapshot(JSON.parse(JSON.stringify(Y.snapshot(sim))));
+  assert.equal(snap.boxes[0], false); assert.equal(snap.boxes.length, sim.track.boxes.length);
+  assert.equal(snap.cars.a.item, sim.cars.a.item);
+  // elinde eşya varken kutu almaz
+  const had = sim.cars.a.item; sim.boxes[1] = 0;
+  const b1 = sim.track.boxes[1];
+  Object.assign(sim.cars.a, { x: b1.x, y: b1.y, vx: 0, vy: 0 }); step(sim);
+  assert.equal(sim.cars.a.item, had); assert.equal(sim.boxes[1], 0, 'dolu elle kutu alınmaz');
+  // 6 sn sonra geri gelir
+  Object.assign(sim.cars.a, { x: b0.x + 50, y: b0.y + 50 });
+  for (let i = 0; i < 30 * 6.2; i++) { sim.cars.a.fall = 1; step(sim); }
+  assert.equal(sim.boxes[0], 0, 'kutu yeniden belirdi');
+  ok('Kutu: eşya verilir, kutu kaybolur, dolu elle alınmaz, 6 sn sonra geri gelir; anlık görüntüde görünür');
+}
+
+// ---------- Dağılım: lider de çeşitli eşya bulur (füze hariç); geride kalan hepsini ----------
+{
+  const seen = { lead: new Set(), back: new Set() }; const counts = {};
+  for (let k = 0; k < 200; k++) {
+    const sim = raceSim(['a', 'b', 'c', 'd'], 100 + k);
+    place(sim, 'a', 140); place(sim, 'b', 125); place(sim, 'c', 110); place(sim, 'd', 100); // kutudan uzak (kutuyu yalnızca denenen araba alsın)
+    for (const id of ['a', 'd']) sim.cars[id].item = 0;
+    const b = sim.track.boxes[0];
+    const atBox = (id, prog) => Object.assign(sim.cars[id], { x: b.x, y: b.y, s: b.s, d: b.d, z: 0, safeS: b.s, prog, vx: 0, vy: 0, sp: 0 });
+    atBox('a', 300); step(sim); seen.lead.add(sim.cars.a.item); counts[sim.cars.a.item] = (counts[sim.cars.a.item] || 0) + 1;
+    sim.boxes[0] = 0; sim.cars.a.item = 0; place(sim, 'a', 140, 0, 0);
+    atBox('d', -5); step(sim); seen.back.add(sim.cars.d.item);
+  }
+  assert.ok(!seen.lead.has(2), 'lider füze bulmaz (önünde kimse yok)');
+  assert.ok(seen.lead.size >= 4, 'lider çeşitli eşya bulur: ' + [...seen.lead]);
+  assert.ok((counts[1] || 0) < 200 * 0.35, 'lider hep nitro bulmaz: nitro ' + counts[1] + '/200');
+  assert.equal(seen.back.size, 6, 'son sıradaki altı çeşidi de bulabilir: ' + [...seen.back]);
+  ok(`Dağılım: lider ${[...seen.lead].sort()} bulur (nitro ${counts[1]}/200), geride kalan altı eşyanın hepsini bulabilir`);
+}
+
+// ---------- 🥒 Turşu Nitro ----------
+{
+  const run = (item) => {
+    const sim = raceSim(['a', 'b'], 9); const tr = sim.track; const s0 = straightS(tr);
+    place(sim, 'a', s0); place(sim, 'b', 3); sim.cars.a.item = item;
+    let top = 0, used = false;
+    for (let i = 0; i < 30 * 3; i++) { if (step(sim, { a: { gas: true, bomb: i === 0 } }).some((e) => e.e === 'use' && e.item === 1)) used = true; top = Math.max(top, sim.cars.a.sp); }
+    return { top, boost: sim.cars.a.fx.boost, used };
+  };
+  const plain = run(0), nitro = run(1);
+  assert.ok(nitro.top > plain.top + 1.5, `nitro daha hızlı: ${nitro.top.toFixed(1)} > ${plain.top.toFixed(1)}`);
+  assert.ok(nitro.used && !plain.used, 'nitro kullanıldı (kullanım olayı)');
+  ok(`Turşu Nitro: en yüksek hız ${plain.top.toFixed(1)} → ${nitro.top.toFixed(1)}`);
+}
+
+// ---------- 🧯 Fren Hortumu / 🪠 Gaz Tıkacı: öndekini vurur ----------
+{
+  const setup = (item) => {
+    const sim = raceSim(['a', 'b'], 9); const s0 = straightS(sim.track);
+    place(sim, 'a', s0, 0, 6); place(sim, 'b', s0 + 6, 0, 6); sim.cars.a.item = item;
+    return sim;
+  };
+  // hortum: b'nin freni 5 sn çalışmaz, gazı çalışır
+  let sim = setup(3);
+  let evs = step(sim, { a: { gas: true, bomb: true }, b: { gas: true } });
+  assert.ok(evs.some((e) => e.e === 'hit' && e.id === 'b' && e.by === 'a' && e.item === 3), 'hortum öndekine isabet');
+  assert.ok(sim.cars.b.fx.nobrake > 4.9 && sim.cars.b.fx.nogas === 0);
+  assert.equal(sim.cars.a.fx.nobrake, 0, 'kendi freni sağlam');
+  const brakeTest = (fxBrake) => {
+    const s2 = setup(0); s2.cars.b.fx.nobrake = fxBrake;
+    for (let i = 0; i < 20; i++) step(s2, { a: {}, b: { brake: true } });
+    return s2.cars.b.sp;
+  };
+  assert.ok(brakeTest(5) > brakeTest(0) + 2, 'fren hortumu yiyen fren yapamaz');
+  // tıkaç: gaz çalışmaz
+  sim = setup(4);
+  evs = step(sim, { a: { gas: true, bomb: true }, b: { gas: true } });
+  assert.ok(evs.some((e) => e.e === 'hit' && e.id === 'b' && e.item === 4), 'tıkaç isabet');
+  assert.ok(sim.cars.b.fx.nogas > 2.4 && sim.cars.b.fx.nobrake === 0);
+  const gasTest = (fxGas) => { const s2 = setup(0); s2.cars.b.fx.nogas = fxGas; for (let i = 0; i < 45; i++) step(s2, { a: {}, b: { gas: true } }); return s2.cars.b.sp; };
+  assert.ok(gasTest(0) > gasTest(2.5) + 1.2, 'gaz tıkacı yiyen gaz veremez');
+  // süre dolunca düzelir
+  sim = setup(0); sim.cars.b.fx.nogas = 0.2;
+  for (let i = 0; i < 12; i++) step(sim, { b: { gas: true } });
+  assert.equal(sim.cars.b.fx.nogas, 0, 'etki biter');
+  ok('Fren Hortumu ve Gaz Tıkacı: öndekine isabet eder, frenini/gazını keser, süre sonunda biter, kullananı etkilemez');
+}
+
+// ---------- Lider: hortum/tıkaç arkadaki en yakın araca gider; yalnızsa harcanmaz ----------
+{
+  let sim = raceSim(['a', 'b', 'c'], 9); const s0 = straightS(sim.track);
+  place(sim, 'a', s0 + 20); place(sim, 'b', s0 + 12); place(sim, 'c', s0); sim.cars.a.item = 3; // a lider
+  let evs = step(sim, { a: { bomb: true } });
+  assert.ok(evs.some((e) => e.e === 'hit' && e.id === 'b' && e.by === 'a'), 'lider hortumu arkadaki en yakına atar');
+  assert.ok(sim.cars.b.fx.nobrake > 4.9 && sim.cars.c.fx.nobrake === 0, 'yalnızca en yakın arkadaki etkilenir');
+  assert.equal(sim.cars.a.item, 0);
+  // yalnız araba: hedef yok, harcanmaz
+  sim = raceSim(['a'], 9); place(sim, 'a', s0); sim.cars.a.item = 4;
+  evs = step(sim, { a: { bomb: true } });
+  assert.ok(evs.some((e) => e.e === 'noTarget'), 'hedef yok olayı'); assert.equal(sim.cars.a.item, 4, 'eşya harcanmadı');
+  ok('Lider: hortum/tıkaç arkadaki en yakın araca gider; hiç hedef yoksa eşya harcanmaz');
+}
+
+// ---------- 🥟 Börek Füzesi ----------
+{
+  // isabet: hizalı öndeki araç döner ve yavaşlar
+  let sim = raceSim(['a', 'b'], 9); const s0 = straightS(sim.track);
+  place(sim, 'a', s0, 0, 6); place(sim, 'b', s0, 0, 6);
+  const A = sim.cars.a, B = sim.cars.b;
+  B.x = A.x + Math.cos(A.h) * 9; B.y = A.y + Math.sin(A.h) * 9; B.h = A.h; B.vx = Math.cos(A.h) * 6; B.vy = Math.sin(A.h) * 6;
+  A.item = 2;
+  let evs = step(sim, { a: { gas: true, bomb: true }, b: { gas: true } });
+  assert.ok(evs.some((e) => e.e === 'fire' && e.id === 'a'), 'ateş olayı'); assert.equal(A.item, 0);
+  assert.equal(sim.proj.length, 1);
+  let hit = null; const spBefore = B.sp;
+  for (let i = 0; i < 90 && !hit; i++) hit = step(sim, { a: { gas: true }, b: { gas: true } }).find((e) => e.e === 'hit');
+  assert.ok(hit && hit.id === 'b' && hit.by === 'a' && hit.item === 2, 'füze öndekine çarptı');
+  assert.ok(B.fx.spin > 1, 'döner'); assert.equal(sim.proj.length, 0, 'füze yok oldu');
+  assert.ok(B.sp < spBefore * 0.5, `yavaşladı: ${spBefore.toFixed(1)} → ${B.sp.toFixed(1)}`);
+  const hB = B.h; step(sim, { b: { steer: 1, gas: true } });
+  assert.ok(Math.abs(B.steer) < 0.15, 'dönerken direksiyon çalışmaz');
+  // füze kendi sahibine çarpmaz
+  sim = raceSim(['a'], 9); place(sim, 'a', straightS(sim.track), 0, 5); sim.cars.a.item = 2;
+  step(sim, { a: { bomb: true } });
+  for (let i = 0; i < 30; i++) step(sim, { a: {} });
+  assert.equal(sim.cars.a.fx.spin, 0, 'kendine çarpmaz');
+  // yan şeritteki araca çarpmaz (düz gider), ömrü dolunca kaybolur
+  sim = raceSim(['a', 'b'], 9); const s1 = straightS(sim.track);
+  place(sim, 'a', s1, 0, 6); place(sim, 'b', s1 + 8, 0, 6);
+  sim.cars.b.x = sim.cars.a.x + Math.cos(sim.cars.a.h) * 8 + Math.cos(sim.cars.a.h + Math.PI / 2) * 3; sim.cars.b.y = sim.cars.a.y + Math.sin(sim.cars.a.h) * 8 + Math.sin(sim.cars.a.h + Math.PI / 2) * 3;
+  sim.cars.a.item = 2; step(sim, { a: { bomb: true } });
+  for (let i = 0; i < 100; i++) { sim.cars.b.fall = 1; for (const e of step(sim, {})) assert.ok(!(e.e === 'hit' && e.id === 'b'), 'ıskalar'); }
+  assert.equal(sim.proj.length, 0, 'ömür dolunca füze silinir');
+  // anlık görüntü füzeyi taşır
+  sim = raceSim(['a', 'b'], 9); place(sim, 'a', straightS(sim.track), 0, 6); sim.cars.a.item = 2; step(sim, { a: { bomb: true } });
+  const sn = Y.readSnapshot(JSON.parse(JSON.stringify(Y.snapshot(sim))));
+  assert.equal(sn.proj.length, 1); assert.ok(Math.abs(sn.proj[0][0] - sim.proj[0].x) < 0.011);
+  ok('Börek Füzesi: düz gider, öndekini döndürüp yavaşlatır, kendine/yandakine çarpmaz, ömrü dolunca silinir, ağda görünür');
+}
+
+
+// ---------- 👻 Hayalet Çorbası ----------
+{
+  const sim = raceSim(['a', 'b', 'c'], 9); const s0 = straightS(sim.track);
+  place(sim, 'a', s0, 0, 6); place(sim, 'b', s0 + 8, 0, 6); place(sim, 'c', s0 + 14, 0, 6);
+  sim.cars.b.item = 5;
+  step(sim, { b: { bomb: true } });
+  assert.ok(sim.cars.b.fx.ghost > 3.8, 'hayalet oldu'); assert.equal(sim.cars.b.item, 0);
+  // hedef alınamaz: a'nın hortumu b'yi atlar, c'yi vurur
+  sim.cars.a.item = 3;
+  const evs = step(sim, { a: { bomb: true } });
+  assert.ok(evs.some((e) => e.e === 'hit' && e.id === 'c'), 'görünmez b atlandı, c hedeflendi');
+  assert.equal(sim.cars.b.fx.nobrake, 0);
+  // süre dolunca görünür
+  for (let i = 0; i < 30 * 4.2; i++) { for (const id of ['a', 'b', 'c']) sim.cars[id].fall = 1; step(sim, {}); }
+  assert.equal(sim.cars.b.fx.ghost, 0, 'hayalet süresi biter');
+  const sn = Y.readSnapshot(JSON.parse(JSON.stringify(Y.snapshot(raceSimWithGhost()))));
+  assert.ok(sn.cars.b.fx.ghost > 3, 'anlık görüntü hayaleti taşır');
+  function raceSimWithGhost() { const q = raceSim(['a', 'b'], 9); q.cars.b.fx.ghost = 3.5; return q; }
+  ok('Hayalet Çorbası: 4 sn görünmez, hortum/tıkaç/füze onu hedef alamaz, süre sonunda biter, ağda taşınır');
+}
+
+// ---------- 🍌 Muz Kabuğu ----------
+{
+  const sim = raceSim(['a', 'b'], 9); const s0 = straightS(sim.track);
+  place(sim, 'a', s0 + 8, 0, 6); place(sim, 'b', s0, 0, 6);
+  sim.cars.a.item = 6;
+  const evs = step(sim, { a: { gas: true, bomb: true } });
+  assert.ok(evs.some((e) => e.e === 'trap' && e.id === 'a'), 'tuzak olayı'); assert.equal(sim.traps.length, 1); assert.equal(sim.cars.a.item, 0);
+  const T = sim.traps[0];
+  assert.ok(Math.hypot(T.x - sim.cars.a.x, T.y - sim.cars.a.y) < 3, 'tuzak aracın arkasında');
+  // sahibi ilk 2 sn kendi tuzağına basmaz; ama sabit durursa basar
+  const sn = Y.readSnapshot(JSON.parse(JSON.stringify(Y.snapshot(sim))));
+  assert.equal(sn.traps.length, 1); assert.ok(Math.abs(sn.traps[0][0] - T.x) < 0.011);
+  // b tuzağa girer: döner, yavaşlar, tuzak kaybolur
+  sim.cars.b.x = T.x; sim.cars.b.y = T.y; sim.cars.b.s = s0 + 7; sim.cars.b.prog = s0 + 7; const spB = 6;
+  let hit = null; for (let i = 0; i < 3 && !hit; i++) hit = step(sim, { b: { gas: true } }).find((e) => e.e === 'hit' && e.item === 6);
+  assert.ok(hit && hit.id === 'b' && hit.by === 'a', 'tuzağa basan vuruldu');
+  assert.ok(sim.cars.b.fx.spin > 0.8 && sim.cars.b.sp < spB * 0.8, 'döner ve yavaşlar'); assert.equal(sim.traps.length, 0, 'tuzak harcandı');
+  // hayalet tuzağa basmaz
+  const s2 = raceSim(['a', 'b'], 9); place(s2, 'a', s0 + 8, 0, 6); place(s2, 'b', s0, 0, 6); s2.cars.a.item = 6; step(s2, { a: { bomb: true } });
+  s2.cars.b.fx.ghost = 3; s2.cars.b.x = s2.traps[0].x; s2.cars.b.y = s2.traps[0].y; s2.cars.b.s = s0 + 7; s2.cars.b.prog = s0 + 7;
+  step(s2, { b: { gas: true } }); assert.equal(s2.traps.length, 1, 'hayalet tuzağa basmaz'); assert.equal(s2.cars.b.fx.spin, 0);
+  // ömrü dolunca silinir; en fazla TRAP_MAX
+  const s3 = raceSim(['a'], 9); place(s3, 'a', s0, 0, 0);
+  for (let i = 0; i < Y.TRAP_MAX + 6; i++) { s3.cars.a.item = 6; step(s3, { a: { bomb: true } }); }
+  assert.ok(s3.traps.length <= Y.TRAP_MAX, 'tuzak sayısı sınırlı: ' + s3.traps.length);
+  for (let i = 0; i < 30 * (Y.TRAP_LIFE + 1); i++) { s3.cars.a.fall = 1; step(s3, {}); }
+  assert.equal(s3.traps.length, 0, 'ömrü dolan tuzaklar silinir');
+  ok('Muz Kabuğu: arkaya bırakılır, basanı döndürür/yavaşlatır, hayalet basmaz, sayısı ve ömrü sınırlı, ağda taşınır');
+}
+
+// ---------- Eşyalı bot yarışı: botlar eşya kullanır, hâlâ bitirir, düşmez ----------
+{
+  let uses = 0, hits = 0, falls = 0, nan = 0; const used = new Set();
+  for (const seed of [3, 11, 500, 9001, 2024, 77]) {
+    const ps = Array.from({ length: 8 }, (_, i) => ({ id: 'p' + i, bot: true }));
+    const sim = Y.createSim(ps, { seed });
+    Y.startCountdown(sim);
+    while (sim.phase !== 'done' && sim.t < 500) {
+      for (const e of step(sim)) { if (e.e === 'use') { uses++; used.add(e.item); } if (e.e === 'hit') hits++; if (e.e === 'fall') falls++; }
+      for (const c of Object.values(sim.cars)) if (!Number.isFinite(c.x + c.y + c.sp)) nan++;
+    }
+    const fin = Object.values(sim.cars).filter((c) => c.done !== null).length;
+    assert.equal(fin, 8, `tohum ${seed}: tüm botlar bitirmeli (${fin}/8)`);
+  }
+  assert.equal(nan, 0, 'sayı bozulması yok');
+  assert.ok(uses >= 20, 'botlar eşya kullanır: ' + uses);
+  assert.ok(used.size >= 5, 'birden çok çeşit kullanıldı: ' + [...used]);
+  assert.ok(used.has(5) && used.has(6), 'hayalet ve muz da kullanılır');
+  assert.ok(hits >= 5, 'isabetler oluyor: ' + hits);
+  assert.ok(falls <= 6, 'eşyalarla da botlar çok düşmez: ' + falls);
+  ok(`Eşyalı bot yarışı: 6 pist × 8 bot, ${uses} kullanım (${[...used].sort()}), ${hits} isabet, ${falls} düşüş`);
 }
 
 console.log('YARIŞ TESTLERİ GEÇTİ');

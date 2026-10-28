@@ -5,3 +5,19 @@ node_modules/
 .claude/settings.local.json
 .DS_Store
 *.log
+
+ios/App/Pods/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+
+# Unity
+unity/Library/
+unity/Temp/
+unity/Logs/
+unity/obj/
+unity/Builds/
+unity/UserSettings/
+unity/*.csproj
+unity/*.sln
+.wrangler/
+.env*

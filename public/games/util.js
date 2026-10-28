@@ -23,11 +23,36 @@ export function shuffle(arr) {
 export const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ---------- Takımlar ----------
-// env: { players: [{id, bot}], addBot() → {id, bot} } (game-core sağlar)
+// env: { players: [{id, bot}], addBot() → {id, bot}, teams? } (game-core sağlar)
+// env.teams: oda sahibinin dağıttığı takımlar ([[id, ...], ...]); varsa oyun bunları kullanır, yoksa rastgele bölünür.
+// Oyunda olmayan kimlikler elenir; takımda yer almayan oyuncular (geç gelenler) normal kurallarla eşleştirilir.
+function assigned(env) {
+  if (!Array.isArray(env.teams) || !env.teams.length) return null;
+  const here = new Set(env.players.map((p) => p.id));
+  const teams = env.teams.map((t) => t.filter((id) => here.has(id))).filter((t) => t.length);
+  if (!teams.length) return null;
+  const placed = new Set(teams.flat());
+  return { teams, rest: env.players.filter((p) => !placed.has(p.id)) };
+}
 // İkişerli takımlar; insanlar önce birbiriyle eşleşir.
-//  trio: tek sayıda insan varsa bir takım 3 kişi olur (1 anlatıcı + 2 dinleyici); tek insan yalnız oynar.
-//  trio yoksa: artan insan bir botla eşleşir; toplam tekse geçici bot eklenir.
+//  trio: üçlü takıma izin var (tek sayıda insan varsa bir takım 3 kişi olur; tek insan yalnız oynar).
+//  trio yoksa: artan insan bir botla eşleşir; toplam tekse geçici bot eklenir; atanmış 3'lü takım 2+1(+bot) olarak bölünür.
 export function pairUp(env, { trio = false } = {}) {
+  const asg = assigned(env);
+  if (asg) {
+    const botIds = shuffle(env.players.filter((p) => p.bot && !asg.teams.flat().includes(p.id)).map((p) => p.id));
+    const out = [];
+    for (const t of asg.teams) {
+      if (trio) { out.push(t.slice(0, 3)); continue; }
+      for (let i = 0; i < t.length; i += 2) {
+        const pair = t.slice(i, i + 2);
+        if (pair.length === 1) pair.push(botIds.length ? botIds.pop() : env.addBot().id);
+        out.push(pair);
+      }
+    }
+    if (asg.rest.length) out.push(...pairUp({ players: asg.rest, addBot: env.addBot }, { trio }));
+    return out;
+  }
   const humans = shuffle(env.players.filter((p) => !p.bot).map((p) => p.id));
   const bots = shuffle(env.players.filter((p) => p.bot).map((p) => p.id));
   const teams = [];
@@ -41,8 +66,14 @@ export function pairUp(env, { trio = false } = {}) {
   if (bots.length) teams.push([bots.pop(), env.addBot().id]);
   return teams;
 }
-// İki eşit takım (A/B); eşit değilse küçük takıma geçici bot
+// İki eşit takım (A/B); eşit değilse küçük takıma geçici bot. Atanmış takım sayısı tam 2 ise onlar kullanılır.
 export function twoTeams(env) {
+  const asg = assigned(env);
+  if (asg && asg.teams.length === 2 && !asg.rest.length) {
+    const [A, B] = asg.teams.map((t) => t.slice());
+    while (A.length !== B.length) (A.length < B.length ? A : B).push(env.addBot().id);
+    return [A, B];
+  }
   const humans = shuffle(env.players.filter((p) => !p.bot).map((p) => p.id));
   const bots = shuffle(env.players.filter((p) => p.bot).map((p) => p.id));
   const A = [], B = [];

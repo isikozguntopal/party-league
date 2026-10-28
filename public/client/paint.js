@@ -179,7 +179,7 @@ const firstDiff = (a, b) => { const n = Math.min(a.length, b.length); let i = 0;
 // onChange(i): çizgi listesi değişince çağrılır; i = değişen ilk çizginin sırası
 //   (yeni çizgi → eski uzunluk, geri al / temizle → kısalan uzunluk, devam eden çizgi (cur) → strokes.length)
 export function createPainter(ctx, { onChange } = {}) {
-  let strokes = [], cur = null, start = null, tool = { c: 0, w: 1, t: 'pen' };
+  let strokes = [], cur = null, start = null, tool = { c: 0, w: 1, t: 'pen', e: 1 }; // e: silgi boyutu 0-3 (WIDTHS 1-4)
   let past = [], future = [], drawT0 = performance.now();
   let root = null, handler = null;
 
@@ -201,10 +201,22 @@ export function createPainter(ctx, { onChange } = {}) {
     const dot = q$('#czColorDot'); if (dot) dot.style.background = PALETTE[tool.t === 'eraser' ? 11 : tool.c];
     root.querySelectorAll('[data-c]').forEach((x) => x.classList.toggle('on', +x.dataset.c === tool.c));
     root.querySelectorAll('[data-w]').forEach((x) => x.classList.toggle('on', +x.dataset.w === tool.w));
+    root.querySelectorAll('[data-e]').forEach((x) => x.classList.toggle('on', +x.dataset.e === tool.e));
+    if (tool.t !== 'eraser') hideEraserSizes();
     root.querySelectorAll('.cz-side [data-t]').forEach((x) => x.classList.toggle('on', x.dataset.t === tool.t));
     const u = q$('#czUndo'), r = q$('#czRedo');
     if (u) u.disabled = !past.length;
     if (r) r.disabled = !future.length;
+  }
+  // Silgiye dokununca yanında boyut kutusu açılır (panel kaydırmalı olduğu için kutu panelin dışında, silgi düğmesinin hizasında)
+  const isEraserSizesOpen = () => { const z = q$('#czEsz'); return !!z && !z.classList.contains('hidden'); };
+  function hideEraserSizes() { const z = q$('#czEsz'); if (z) z.classList.add('hidden'); }
+  function showEraserSizes(btn) {
+    const z = q$('#czEsz'), side = q$('#czSide');
+    if (!z || !side || !btn) return;
+    z.style.left = (side.offsetLeft + side.offsetWidth + 6) + 'px';
+    z.style.top = (side.offsetTop + btn.offsetTop - side.scrollTop - 3) + 'px';
+    z.classList.remove('hidden');
   }
   // Araç çubuğu: solda dikey panel (.cz-side) + altta kalem düğmesi, palet, geri al / yinele (.cz-tools > .cz-bar)
   function toolbarHTML(extraClass = '') {
@@ -215,6 +227,7 @@ export function createPainter(ctx, { onChange } = {}) {
           <span class="cz-sep"></span>
           <button class="opt" data-t="clear" title="Temizle">🗑️</button>
         </div>
+        <div class="cz-esz hidden" id="czEsz">${[0, 1, 2, 3].map((e) => `<button class="opt" data-e="${e}" title="Silgi boyutu"><i style="width:${[8, 13, 19, 27][e]}px;height:${[8, 13, 19, 27][e]}px"></i></button>`).join('')}</div>
         <div class="cz-tools cz-tools2${extraClass ? ' ' + extraClass : ''}">
           <div class="cz-bar">
             <button class="opt cz-pen" data-t="toggle" title="Araçlar"><span id="czToolIco">✏️</span><i id="czColorDot"></i></button>
@@ -224,14 +237,16 @@ export function createPainter(ctx, { onChange } = {}) {
         </div>`;
   }
   function onClick(e) {
-    const b = e.target.closest('button'); if (!b || !b.closest('.cz-side, .cz-bar')) return;
+    const b = e.target.closest('button'); if (!b || !b.closest('.cz-side, .cz-bar, .cz-esz')) return;
     const t = b.dataset.t;
     if (b.dataset.c) { tool.c = +b.dataset.c; if (tool.t === 'eraser') tool.t = 'pen'; }
     else if (b.dataset.w) tool.w = +b.dataset.w;
-    else if (t === 'toggle') { const side = q$('#czSide'); if (side) side.classList.toggle('hidden'); }
+    else if (b.dataset.e) { tool.e = +b.dataset.e; hideEraserSizes(); }
+    else if (t === 'toggle') { const side = q$('#czSide'); if (side) side.classList.toggle('hidden'); hideEraserSizes(); }
     else if (t === 'undo') undo();
     else if (t === 'redo') redo();
     else if (t === 'clear') clear();
+    else if (t === 'eraser') { const open = tool.t === 'eraser' && isEraserSizesOpen(); tool.t = 'eraser'; if (open) hideEraserSizes(); else showEraserSizes(b); }
     else if (t) tool.t = t;
     refresh();
     sfx('tick');
@@ -253,6 +268,7 @@ export function createPainter(ctx, { onChange } = {}) {
   // area = {x, y, size} tuval pikseli; editable false ise girdi yok sayılır
   function pointer(type, ev, area, editable = true) {
     if (!editable || !area) return;
+    if (type === 'down') hideEraserSizes();
     const { DPR } = ctx.size();
     const r = ctx.cv.getBoundingClientRect();
     const px = ((ev.clientX - r.left) * DPR - area.x) / area.size * 1000, py = ((ev.clientY - r.top) * DPR - area.y) / area.size * 1000;
@@ -268,7 +284,7 @@ export function createPainter(ctx, { onChange } = {}) {
         return;
       }
       start = { q, t: tnow };
-      cur = { c: col, w: tool.w, p: q.slice(), t: [tnow, tnow] };
+      cur = { c: col, w: t === 'eraser' ? tool.e + 1 : tool.w, p: q.slice(), t: [tnow, tnow] };
       if (t !== 'pen' && t !== 'eraser') cur.shape = t;
       notify(strokes.length);
     } else if (type === 'move' && cur) {

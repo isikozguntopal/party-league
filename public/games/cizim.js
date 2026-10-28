@@ -118,6 +118,7 @@ export function auto(d, pid) {
   const prev = k > 0 ? g.chains[chainOf(g, i, k)][k - 1] : null;
   if (type === 'write') return { text: PROMPTS[Math.floor(Math.random() * PROMPTS.length)] };
   if (type === 'draw') {
+    if (!g.bots.includes(pid)) return { art: null }; // insan hiçbir şey göndermediyse boş kalır
     const doodle = conceptFor(prev && prev.text), seed = Math.floor(Math.random() * 1e9);
     return { art: { doodle, seed, dur: artDuration(drawDoodle(doodle, seed)) } };
   }
@@ -233,7 +234,7 @@ export function view(d, pid) {
   });
   // Oy zorunluluğu: bekleyen sayısı (herkese) ve bu oyuncunun hâlâ oy vermesi gerekip gerekmediği
   const waitIds = pendingVoters(d, (id) => { const p = d.players.find((q) => q.id === id); return !!p && !p.left; });
-  return { ...base, ai: g.ai, total: g.album.length, shown, owners, waiting: waitIds.length, mustVote: waitIds.includes(pid) };
+  return { ...base, ai: g.ai, total: g.album.length, shown, owners, waiting: waitIds.length, waitIds, mustVote: waitIds.includes(pid) };
 }
 
 export const DOODLE_NAMES = DOODLES;

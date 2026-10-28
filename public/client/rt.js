@@ -2,12 +2,17 @@
 // çalıştırır ve 15 Hz anlık görüntü yayınlar; diğerleri kumanda gönderir ve görüntüler arasında yumuşak
 // geçiş yapar. WebRTC kurulamazsa (operatör ağı, NAT) oyuncu "yedek aktarım"a düşer: anlık görüntüler ve
 // kumandalar sunucu üzerinden (rtSnap / rtInput + state yoklaması) ~4 Hz taşınır — biraz gecikmeli ama oynanır.
-import { createNet } from './net.js';
+import { createNet, loadIce } from './net.js';
 import { createControls } from './controls.js';
 
 const STEP = 1 / 30;
 const SNAP_MS = 66;
-const CONNECT_WAIT = 12000;
+const CONNECT_WAIT = 12000;      // doğrudan bağlantı için hızlı yoklama süresi (arka planda bağlanmaya devam eder)
+// Bağlantı kontrolü: oyun, HERKESİN telefonundan kumanda gelene (bağlandı) ve herkes öğretici/uyarıları kapatana (hazır) dek başlamaz.
+const CONNECT_MAX = 16000;       // bağlanamayan (hiç kumanda göndermeyen) oyuncu için en uzun bekleme; sonra bot oynar
+const READY_MAX = 35000;         // bağlanan ama öğreticiyi kapatmayan oyuncu için en uzun bekleme (öğretici kendiliğinden kapanır)
+const RELAY_AFTER = 4000;        // doğrudan bağlantı bu kadar sürede kurulmadıysa sunucu aktarımı da denenir
+const CLIENT_WAIT = 3500;        // oyuncu bu süre içinde görüntü alamazsa sunucu aktarımına geçer (sonradan doğrudan bağlantıya döner)
 const RELAY_SNAP_MS = 240;   // oda sahibi sunucuya bu sıklıkta görüntü bırakır
 const RELAY_IN_MS = 220;     // aktarılan oyuncu kumandasını bu sıklıkta bırakır
 const RELAY_POLL_MS = 280;
@@ -15,7 +20,9 @@ const RELAY_POLL_MS = 280;
 export function createRealtime(ctx, spec) {
   const { playerId } = ctx;
   const mod = spec.mod;
-  let seq = null, isHost = false, net = null, sim = null, timer = null, inTimer = null;
+  if (ctx.online()) loadIce(ctx.call); // TURN bilgisi bağlantılar kurulmadan önce hazır olsun
+  let seq = null, isHost = false, net = null, sim = null, timer = null, inTimer = null, checkMsg = '';
+  const botted = new Set();
   let openedAt = 0, started = false, resultSent = false, lastSnap = 0, lastProg = 0, evBuf = [], relayEv = [], t0 = 0, acc = 0, lastTick = performance.now();
   const remoteIn = {};
   const buf = [];
@@ -28,8 +35,11 @@ export function createRealtime(ctx, spec) {
   const controls = createControls(ctx.stage, spec.controls);
   controls.show(false);
 
-  const myInput = () => spec.input(controls.read(), ctx.view());
-  const mergeIn = (from, i) => { remoteIn[from] = { ...(remoteIn[from] || {}), ...i, bomb: (remoteIn[from] && remoteIn[from].bomb) || i.bomb }; };
+  // `rdy`: bu oyuncu hazır mı (öğretici/uyarı kapalı)? Oda sahibi herkesin hazır olmasını bekler.
+  const myInput = () => ({ ...spec.input(controls.read(), ctx.view()), rdy: ctx.blocking ? !ctx.blocking() : true });
+  // `bomb` tek basış alanı: sayıysa (bit maskesi) bitler birleştirilir, değilse mantıksal VEYA
+  const orBomb = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a | b : a || b);
+  const mergeIn = (from, i) => { remoteIn[from] = { ...(remoteIn[from] || {}), ...i, bomb: orBomb(remoteIn[from] && remoteIn[from].bomb, i.bomb) }; };
   const isAway = (id) => { const p = ctx.state().players.find((x) => x.id === id); return !p || p.left || p.away; };
 
   // Bağlanamayan oyuncu: telefonu açıksa sunucu üzerinden oynar, değilse bot
@@ -54,7 +64,7 @@ export function createRealtime(ctx, spec) {
       });
     }
     t0 = performance.now();
-    if (ctx.debug) window.__lkNet = net;
+    if (ctx.debug) { window.__lkNet = net; window.__lkSim = sim; } // yalnızca ?cizim test modunda
     timer = setInterval(hostTick, STEP * 1000);
   }
 
@@ -64,11 +74,30 @@ export function createRealtime(ctx, spec) {
     const now = performance.now();
     if (!started && ctx.serverNow() >= s.roundStart) {
       if (!openedAt) openedAt = now; // takımlar ekranında beklenen süre bağlantı bekleme süresinden sayılmaz
-      const st = net ? Object.values(net.states()) : [];
-      if (!st.length || st.every((x) => x === 'open' || x === 'failed') || now - Math.max(t0, openedAt) > CONNECT_WAIT) {
-        if (net) for (const [id, x] of Object.entries(net.states())) if (x !== 'open') fallback(id);
+      const waited = now - Math.max(t0, openedAt);
+      const peers = net ? Object.keys(net.states()) : [];
+      const states = net ? net.states() : {};
+      const rows = [];
+      let pending = 0;
+      for (const id of peers) {
+        if (botted.has(id)) continue;
+        if (isAway(id)) { botted.add(id); relay.delete(id); spec.setBot(sim, id); ctx.toast(`${ctx.pName(id)} yok (bot oynayacak)`); continue; }
+        const inp = remoteIn[id];
+        // doğrudan bağlantı kurulamadıysa (ya da gecikiyorsa) sunucu aktarımı da denenir: oyuncu orada kumanda bırakır
+        if (!inp && ctx.online() && (states[id] === 'failed' || waited > RELAY_AFTER)) relay.add(id);
+        const connected = !!inp, ready = connected && inp.rdy !== false;
+        // süre doldu ve hiç kumanda gelmedi: bu oyuncu bağlanamadı, bot oynar
+        if (!connected && waited > CONNECT_MAX) { botted.add(id); relay.delete(id); spec.setBot(sim, id); ctx.toast(`${ctx.pName(id)} bağlanamadı, bot oynayacak`); continue; }
+        if (!ready) pending++;
+        rows.push({ id, connected, ready });
+      }
+      const hostBlocked = ctx.blocking ? ctx.blocking() : false;
+      checkMsg = rows.length ? `📡 Bağlantı kontrolü: ${rows.map((r) => `${ctx.pName(r.id)} ${r.ready ? '✓' : r.connected ? '📖' : '…'}`).join(' · ')}${hostBlocked ? ' · sen: 📖' : ''}` : '';
+      if ((!pending && !hostBlocked) || waited > READY_MAX) {
+        for (const r of rows) if (!r.connected) { botted.add(r.id); relay.delete(r.id); spec.setBot(sim, r.id); ctx.toast(`${ctx.pName(r.id)} bağlanamadı, bot oynayacak`); }
+        for (const r of rows) if (r.connected && relay.has(r.id)) ctx.toast(`${ctx.pName(r.id)} sunucu üzerinden oynuyor`);
         mod.startCountdown(sim);
-        started = true;
+        started = true; checkMsg = '';
       }
     }
     advance(now);
@@ -93,7 +122,7 @@ export function createRealtime(ctx, spec) {
     if (sim.phase === 'done' && !resultSent) {
       resultSent = true;
       net && net.broadcast({ t: 'end' }, true);
-      ctx.call({ action: 'rtResult', seq, ranking: mod.rankingOf(sim) }).catch(() => { resultSent = false; });
+      ctx.call({ action: 'rtResult', seq, ranking: mod.rankingOf(sim), dnf: mod.dnfOf ? mod.dnfOf(sim) : [] }).catch(() => { resultSent = false; });
     }
   }
 
@@ -181,6 +210,7 @@ export function createRealtime(ctx, spec) {
   return {
     kind: spec.kind,
     realtime: true,
+    always3D: !!spec.always3D,
     supports3D: !spec.views || spec.views.length > 1,
     maxDPR: 1.5, // telefonda akıcılık için çözünürlük biraz düşük
 
@@ -195,7 +225,7 @@ export function createRealtime(ctx, spec) {
       }
       if (net) net.handleSig(s.sig);
       // izleyen: bağlantı süresi doldu ve hâlâ görüntü yoksa yedek aktarıma geç
-      if (net && !isHost && !relayMode && !buf.length && performance.now() - t0 > CONNECT_WAIT) enterRelay();
+      if (net && !isHost && !relayMode && !buf.length && performance.now() - t0 > CLIENT_WAIT) enterRelay();
       const me = s.players.find((p) => p.id === playerId);
       const playing = s.status === 'playing' && !!me && me.inGame && ctx.serverNow() >= s.roundStart - 500;
       controls.show(playing && (!spec.showControls || spec.showControls(s)));
@@ -226,7 +256,7 @@ export function createRealtime(ctx, spec) {
       } else connMsg = '';
       const meIn = s.players.find((p) => p.id === playerId)?.inGame;
       const banner = spec.render(st, now, dt, view, { connMsg, spectator: !meIn, isHost });
-      return connMsg || banner;
+      return connMsg || (isHost && checkMsg) || banner;
     },
     hint: () => null,
     panel: () => spec.panel(latest),

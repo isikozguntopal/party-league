@@ -7,24 +7,45 @@
 //  • Gerçek zamanlı (Bomba, Yarış): oyunu oda sahibinin cihazı yönetir, telefonlar WebRTC ile doğrudan
 //    bağlanır. Sunucu yalnızca bağlantı kurulumunu (sig), ara sıralamayı ve sonucu tutar.
 // Her oyun sonunda sıralamaya göre puan verilir; turnuva bitince podyum.
-import { GameError, uid } from './games/util.js';
+import { GameError, uid, rankingFromOuts } from './games/util.js';
 import { cleanLook, randomLook } from './games/avatar.js';
+import { cleanChat } from './games/filtre.js';
 import * as lazer from './games/lazer.js';
 import * as bomba from './games/bomba.js';
 import * as cizim from './games/cizim.js';
 import * as bilgi from './games/bilgi.js';
 import * as yaris from './games/yaris.js';
+import * as pati from './games/pati.js';
+import * as sarki from './games/sarki.js';
+import * as tanir from './games/tanir.js';
 import * as keski from './games/keski.js';
 import * as bombaci from './games/bombaci.js';
 import * as kor from './games/korkosu.js';
 import * as halat from './games/halat.js';
 import * as neciz from './games/neciz.js';
 import * as kayik from './games/kayik.js';
+import * as basket from './games/basket.js';
+import * as saniye from './games/saniye.js';
+import * as suru from './games/suru.js';
+import * as ayar from './games/ayar.js';
+import * as telve from './games/telve.js';
+import * as melodi from './games/melodi.js';
 
 export { GameError, uid };
-export const GAMES = { lazer, bomba, cizim, neciz, bilgi, keski, bombaci, kor, halat, kayik, yaris };
-export const TOUR = ['lazer', 'bomba', 'cizim', 'neciz', 'bilgi', 'keski', 'bombaci', 'kor', 'halat', 'kayik', 'yaris'];
-export const TEAM_GAMES = ['bombaci', 'kor', 'halat', 'kayik'];
+export const GAMES = { lazer, bomba, cizim, neciz, bilgi, keski, bombaci, kor, halat, kayik, yaris, pati, sarki, tanir, basket, melodi, saniye, suru, ayar, telve };
+export const TOUR = ['lazer', 'bomba', 'cizim', 'bilgi', 'keski', 'bombaci', 'neciz', 'kor', 'halat', 'kayik', 'yaris', 'pati', 'sarki', 'tanir', 'basket', 'melodi', 'saniye', 'suru', 'ayar', 'telve'];
+export const TEAM_GAMES = ['bombaci', 'kor', 'halat', 'kayik', 'tanir', 'melodi'];
+// Takımlı turnuvada OYNANMAYAN oyunlar: takım arkadaşları birbirine zarar verir (sapan, bomba, yarış eşyaları, pati eşyaları)
+export const TEAM_BAN = ['lazer', 'bomba', 'yaris', 'pati'];
+export const TEAM_SIZES = [1, 2, 3];             // 1 = bireysel; 2 = ikili; 3 = üçlü takımlar
+// Bu takım düzeninde oyun oynanabilir mi? (teams: [[id,...],...] ya da null)
+export function teamOk(kind, teams) {
+  if (!teams) return true;
+  if (TEAM_BAN.includes(kind)) return false;
+  if (kind === 'halat') return teams.length === 2;                        // iki takım çekişir
+  if (kind === 'kor' || kind === 'kayik') return teams.every((t) => t.length <= 2);   // ikili oyunlar
+  return true;
+}
 export const MODES = ['tour', ...TOUR];
 export const POINTS = [3, 2, 1];                 // 1., 2., 3. olana verilen puan
 export const GAME_INTRO_MS = 3000;               // her oyunun başındaki tanıtım kartı
@@ -107,6 +128,11 @@ const activePlayers = (d) => d.players.filter((p) => !p.left);
 const participants = (d) => Object.keys(d.g.alive);
 const placeMs = (d) => { const m = GAMES[d.kind]; return m.placeMs ? m.placeMs(d) : m.PLACE_MS; };
 function requireHost(d, pid) { if (d.hostId !== pid) throw new GameError('Bunu sadece oda sahibi yapabilir', 403); }
+// Yönetici: oda sahibi + onun yönetici yaptığı oyuncular (çıkar, onayla, oyunu atla / bitir)
+const isAdmin = (d, pid) => d.hostId === pid || !!d.players.some((p) => p.id === pid && p.admin && !p.left);
+function requireAdmin(d, pid) { if (!isAdmin(d, pid)) throw new GameError('Bunu sadece oda sahibi ya da yönetici yapabilir', 403); }
+// Onay bekleyen (turnuva sürerken giren) oyuncular oynamaz, yalnızca izler
+const playing = (d) => activePlayers(d).filter((p) => !p.pending);
 
 // Botlar ve uzaktaki (telefonu kilitli / uygulamadan çıkmış) oyuncular beklenmez, otomatik oynatılır.
 function humansReady(d, now) {
@@ -117,10 +143,44 @@ function humansReady(d, now) {
   });
 }
 
+// ---------- Takımlar (oda sahibi lobide dağıtır; ikili / üçlü) ----------
+const shuffleArr = (a) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+// Rastgele dengeli takımlar: ceil(n / boyut) takım, farklar en çok 1 kişi
+function randomTeams(ids, size) {
+  const k = Math.max(1, Math.ceil(ids.length / size)), teams = Array.from({ length: k }, () => []);
+  shuffleArr(ids).forEach((id, i) => teams[i % k].push(id));
+  return teams.filter((t) => t.length);
+}
+// Takım düzenini oyuncu listesiyle uyumlu tut: çıkanları sil, yeni gelenleri boş yerli (yoksa yeni) takıma ekle
+function fixTeams(x) {
+  const size = x.teamSize || 1;
+  if (size <= 1) { x.teams = null; return; }
+  const ids = activePlayers(x).filter((p) => !p.temp).map((p) => p.id);
+  let teams = (x.teams || []).map((t) => t.filter((id) => ids.includes(id))).filter((t) => t.length);
+  teams = teams.flatMap((t) => { const out = []; for (let i = 0; i < t.length; i += size) out.push(t.slice(i, i + size)); return out; });
+  const placed = new Set(teams.flat());
+  for (const id of ids) {
+    if (placed.has(id)) continue;
+    const open = teams.filter((t) => t.length < size).sort((a, b) => a.length - b.length)[0];
+    if (open) open.push(id); else teams.push([id]);
+  }
+  x.teams = teams;
+}
+const teamOf = (teams, id) => (teams || []).findIndex((t) => t.includes(id));
+
 function startMatch(x, now) {
   x.players = activePlayers(x).filter((p) => !p.temp);
-  const list = x.mode === 'tour' ? TOUR.filter((k) => (x.tourGames || TOUR).includes(k)) : [x.mode];
-  x.tour = { list: list.length ? list : TOUR, idx: 0, scores: Object.fromEntries(x.players.map((p) => [p.id, 0])), results: [] };
+  for (const p of x.players) delete p.pending;
+  fixTeams(x);
+  let list = x.mode === 'tour' ? TOUR.filter((k) => (x.tourGames || TOUR).includes(k)) : [x.mode];
+  const teamTour = x.mode === 'tour' && !!x.teams;
+  if (teamTour) {
+    list = list.filter((k) => teamOk(k, x.teams));
+    if (!list.length) throw new GameError('Seçili oyunların hiçbiri bu takım düzeninde oynanamaz (takımlı turnuvada sapan, bomba, yarış ve pati yok)');
+  }
+  // takımlar: takımlı turnuvada puan takım olarak toplanır; tek takım oyununda yalnızca oyuna dağıtılır
+  const useTeams = !!x.teams && (teamTour || TEAM_GAMES.includes(x.mode));
+  x.tour = { list: list.length ? list : TOUR, idx: 0, scores: Object.fromEntries(x.players.map((p) => [p.id, 0])), results: [], teams: useTeams ? x.teams.map((t) => t.slice()) : null, teamScoring: teamTour };
   startGame(x, now);
 }
 
@@ -134,7 +194,7 @@ function addTempBot(x) {
 
 function startGame(x, now) {
   x.players = x.players.filter((p) => !p.temp);
-  for (const p of activePlayers(x)) if (!p.temp && !(p.id in x.tour.scores)) x.tour.scores[p.id] = 0;
+  for (const p of playing(x)) if (!p.temp && !(p.id in x.tour.scores)) x.tour.scores[p.id] = 0;
   x.kind = x.tour.list[x.tour.idx];
   const mod = GAMES[x.kind];
   x.seq = (x.seq || 0) + 1;
@@ -143,11 +203,11 @@ function startGame(x, now) {
   x.history = [];
   x.sig = [];
   // Takım oyunları oyuncuları kendisi böler; gerekirse geçici bot ister
-  const env = { players: activePlayers(x).map((p) => ({ id: p.id, bot: !!p.bot })), addBot: () => { const b = addTempBot(x); const e = { id: b.id, bot: true }; env.players.push(e); return e; } };
+  const env = { players: playing(x).map((p) => ({ id: p.id, bot: !!p.bot, animal: p.animal })), teams: x.tour.teams || null, addBot: () => { const b = addTempBot(x); const e = { id: b.id, bot: true }; env.players.push(e); return e; } };
   // oyunlar arası (aynı odada) kalıcı küçük hafıza: ör. çıkmış kelimeler tekrar gelmesin
   x.mem = x.mem || {};
   env.mem = x.mem[x.kind] = x.mem[x.kind] || {};
-  x.g = mod.init(activePlayers(x).map((p) => p.id), env);
+  x.g = mod.init(playing(x).map((p) => p.id), env);
   if (mod.realtime) Object.assign(x.g, { simHost: x.hostId, rtStart: now, provAt: now, prov: null });
   x.status = 'playing';
   x.roundStart = now + GAME_INTRO_MS;
@@ -208,19 +268,43 @@ function cleanRanking(x, rank) {
 }
 
 // Oyun bitti: sıralamaya göre puan dağıt; turnuva sürüyorsa skor ekranı, bittiyse podyum
-function endGame(x, rank, at) {
+const DNF_PTS = -1;      // bitiremeyenler (iki takım bitirince oyun kapanır) eksi puan alır
+// opts.dnf: eksi puanlı bitirememişler; opts.none: puan dağıtma (oyun atlandı)
+function endGame(x, rank, at, opts = {}) {
   // geçici botlar sıralamadan ve oyuncu listesinden çıkar
   const temp = new Set(x.players.filter((p) => p.temp).map((p) => p.id));
   rank = rank.map((grp) => grp.filter((id) => !temp.has(id))).filter((grp) => grp.length);
+  const dnf = new Set((opts.dnf || []).filter((id) => !temp.has(id)));
+  if (dnf.size) { rank = rank.map((grp) => grp.filter((id) => !dnf.has(id))).filter((grp) => grp.length); rank.push([...dnf]); }
   x.players = x.players.filter((p) => !p.temp);
-  const gained = {};
-  let pos = 0;
-  for (const grp of rank) {
-    for (const id of grp) gained[id] = POINTS[pos] || 0;
-    pos += grp.length;
+  const gained = {}, places = {};
+  if (x.tour.teamScoring && x.tour.teams) {
+    // Takımlı turnuva: takımın sırası = üyelerinin ortalama sırası (eşitlikte en iyi oyuncusu öndeki takım); her üye takımının puanını alır
+    const posOf = {};
+    let at = 0;
+    for (const grp of rank) { for (const id of grp) posOf[id] = at; at += grp.length; }
+    const rows = x.tour.teams.map((t, ti) => {
+      const mem = t.filter((id) => id in posOf);
+      return { ti, mem, avg: mem.length ? mem.reduce((a, id) => a + posOf[id], 0) / mem.length : Infinity, best: mem.length ? Math.min(...mem.map((id) => posOf[id])) : Infinity };
+    }).filter((r) => r.mem.length).sort((a, b) => (a.avg - b.avg) || (a.best - b.best));   // ortalama eşitse en iyi oyuncusu önde olan takım önde
+    let place = 0;
+    const grouped = [];
+    rows.forEach((r, i) => {
+      if (i && Math.abs(rows[i - 1].avg - r.avg) < 1e-9 && rows[i - 1].best === r.best) grouped[grouped.length - 1].push(...r.mem);
+      else { place = grouped.length; grouped.push([...r.mem]); }
+      for (const id of r.mem) { gained[id] = r.mem.every((m) => dnf.has(m)) && dnf.size ? DNF_PTS : POINTS[place] || 0; places[id] = place; }
+    });
+    rank = grouped;                                           // sıralama: her grup = aynı sıradaki takım(lar)ın üyeleri
+  } else {
+    let pos = 0, place = 0;
+    for (const grp of rank) {
+      for (const id of grp) { gained[id] = dnf.has(id) ? DNF_PTS : POINTS[pos] || 0; places[id] = place; }
+      pos += grp.length; place += 1;
+    }
   }
+  if (opts.none) for (const id of Object.keys(gained)) gained[id] = 0;
   for (const [id, pts] of Object.entries(gained)) x.tour.scores[id] = (x.tour.scores[id] || 0) + pts;
-  x.tour.results.push({ kind: x.kind, ranking: rank, gained });
+  x.tour.results.push({ kind: x.kind, ranking: rank, gained, places });
   x.actions = {};
   x.sig = [];
   if (x.tour.idx < x.tour.list.length - 1) {
@@ -237,6 +321,51 @@ function endGame(x, rank, at) {
 function rtLost(x, now) {
   const host = playerOf(x, x.g.simHost);
   return !host || host.left || isAway(host, now) || now - x.g.rtStart > RT_MAX_MS;
+}
+
+// Oyuncuyu odadan çıkar (kendi isteğiyle ya da yönetici). Turnuva sürüyorsa listede kalır ki skor tablosunda adı görünsün.
+function removePlayer(x, id, now, kicked) {
+  const me = x.players.find((p) => p.id === id);
+  if (!me || me.left) return false;
+  if (kicked && !me.bot) (x.banned = x.banned || []).push(id);
+  if (x.status === 'lobby') {
+    x.players = x.players.filter((p) => p.id !== id);
+    fixTeams(x);
+  } else {
+    me.left = true;
+    delete me.pending; delete me.admin;
+    if (x.status === 'playing' && x.g.alive[id] && !GAMES[x.kind].realtime) {
+      x.g.alive[id] = false;
+      x.g.outs.unshift([id]); // oyundan çıkan en son sıraya
+      delete x.actions[id];
+      const rank = GAMES[x.kind].ranking(x, participants(x));
+      if (rank) endGame(x, rank, now);
+      else if (now >= x.roundStart && humansReady(x, now)) resolveRound(x, now);
+    }
+  }
+  transferHost(x);
+  return true;
+}
+
+// Oyunun o anki durumundan sıralama (yönetici "turu bitir" dediğinde). Bilinmiyorsa null.
+function standingNow(x) {
+  const mod = GAMES[x.kind], parts = participants(x), g = x.g;
+  if (mod.realtime) return g.prov ? cleanRanking(x, g.prov) : null;
+  if (x.gate) return null;
+  let r = null;
+  try { r = mod.ranking(x, parts); } catch (e) { r = null; }
+  if (r) return r;
+  const group = (key, dir) => {
+    const ids = parts.slice().sort((a, b) => dir * (key(a) - key(b)));
+    const out = [];
+    for (const id of ids) { const l = out[out.length - 1]; if (l && key(l[0]) === key(id)) l.push(id); else out.push([id]); }
+    return out.length === 1 && parts.length > 1 ? null : out;   // herkes eşitse bilgi yok
+  };
+  const tbl = g.scores || g.score;
+  if (tbl && typeof tbl === 'object') return group((id) => Number(tbl[id]) || 0, -1);
+  if (g.total && typeof g.total === 'object') return group((id) => (g.total[id] ?? 1e9), 1);
+  if (Array.isArray(g.outs) && g.outs.length) return rankingFromOuts(g, parts);
+  return null;
 }
 
 function tickDue(x, now) {
@@ -274,10 +403,12 @@ function view(d, pid, now) {
     status: d.status,
     mode: d.mode,
     tourGames: d.tourGames || TOUR,
+    teamSize: d.teamSize || 1,
+    teams: d.teams || null,
     seq: d.seq || 0,
     kind: inGame ? d.kind : null,
     players: d.players.filter((p) => !p.left || d.status !== 'lobby').map((p) => ({
-      id: p.id, name: p.name, color: p.color, bot: p.bot, temp: !!p.temp, look: p.look, left: !!p.left, away: isAway(p, now),
+      id: p.id, name: p.name, color: p.color, bot: p.bot, temp: !!p.temp, look: p.look, animal: p.animal || null, left: !!p.left, away: isAway(p, now), pending: !!p.pending, admin: d.hostId === p.id || !!p.admin,
       alive: !!(inGame && d.g.alive[p.id]), inGame: !!(inGame && p.id in d.g.alive),
     })),
     round: d.round,
@@ -295,6 +426,7 @@ function view(d, pid, now) {
     chat: (d.chat || []).filter((c) => now - c.t < 10000),
     sig: (d.sig || []).filter((m) => m.to === pid),
     isMember: !!me,
+    iAdmin: !!me && isAdmin(d, pid),
   };
 }
 
@@ -304,7 +436,7 @@ function cleanArt(strokes) {
   let n = 0;
   const out = strokes.map((s) => {
     const c = Number(s.c), w = Number(s.w), p = Array.isArray(s.p) ? s.p : [];
-    if (!(c >= 0 && c < 12 && w >= 0 && w < 4) || p.length % 2) throw new GameError('Çizim geçersiz');
+    if (!(c >= 0 && c < 12 && w >= 0 && w < 5) || p.length % 2) throw new GameError('Çizim geçersiz');
     n += p.length;
     const out = { c: c | 0, w: w | 0, p: p.map((v) => Math.max(0, Math.min(1000, Math.round(Number(v) || 0)))) };
     if (s.f) out.f = 1; // kapalı şekil: içi dolu çizilir (kova/dolu kare/dolu daire)
@@ -319,6 +451,12 @@ function cleanArt(strokes) {
   return out;
 }
 
+export function newRoomCode() {
+  let code = '';
+  for (let k = 0; k < 4; k++) code += CODE_ABC[Math.floor(Math.random() * CODE_ABC.length)];
+  return code;
+}
+
 export async function handle(store, body, now = Date.now()) {
   body = body || {};
   const pid = cleanId(body.playerId);
@@ -327,17 +465,19 @@ export async function handle(store, body, now = Date.now()) {
   let extra = null;
 
   if (action === 'create') {
-    for (let i = 0; i < 10; i++) {
-      let code = '';
-      for (let k = 0; k < 4; k++) code += CODE_ABC[Math.floor(Math.random() * CODE_ABC.length)];
+    // newCode: kodu önceden seçen sunucu (Cloudflare: oda başına bir Durable Object) yalnızca o kodu dener
+    const fixed = cleanCode(body.newCode);
+    for (let i = 0; i < (fixed ? 1 : 10); i++) {
+      const code = fixed || newRoomCode();
       const doc = {
-        code, rev: 1, createdAt: now, hostId: pid, status: 'lobby', mode: 'tour', tourGames: TOUR, seq: 0,
+        code, rev: 1, createdAt: now, hostId: pid, status: 'lobby', mode: 'tour', tourGames: TOUR, teamSize: 1, teams: null, seq: 0,
         players: [{ id: pid, name: cleanName(body.name), color: COLORS[0], bot: false, seen: now, look: cleanLook(body.look) }],
         round: 0, roundStart: 0, deadline: 0, actions: {}, history: [], g: null, tour: null,
       };
       const res = await store.setJSON(KEY(code), doc, { onlyIfNew: true });
       if (!res || res.modified !== false) return { state: view(doc, pid, now), now };
     }
+    if (fixed) throw new GameError('KOD_DOLU', 409);
     throw new GameError('Oda oluşturulamadı, tekrar dene', 500);
   }
 
@@ -430,10 +570,14 @@ export async function handle(store, body, now = Date.now()) {
         const look = cleanLook(body.look);
         const ex = x.players.find((p) => p.id === pid);
         if (ex && !ex.left) { ex.name = name; ex.look = look; ex.seen = now; return; }
+        if ((x.banned || []).includes(pid)) throw new GameError('Yönetici seni odadan çıkardı', 403);
         if (activePlayers(x).length >= MAX_PLAYERS) throw new GameError('Oda dolu');
-        if (ex) Object.assign(ex, { left: false, name, look, seen: now });
-        else x.players.push({ id: pid, name, color: nextColor(x), bot: false, seen: now, look });
+        // Turnuva sürerken gelen oyuncu yönetici onaylayana dek yalnızca izler
+        const wait = x.status === 'playing' || x.status === 'inter';
+        if (ex) Object.assign(ex, { left: false, name, look, seen: now, pending: wait ? true : undefined });
+        else x.players.push({ id: pid, name, color: nextColor(x), bot: false, seen: now, look, ...(wait ? { pending: true } : {}) });
         transferHost(x);
+        if (x.status === 'lobby') fixTeams(x);
       });
       break;
 
@@ -443,6 +587,15 @@ export async function handle(store, body, now = Date.now()) {
         if (!me) throw new GameError('Bu odada değilsin');
         me.look = cleanLook(body.look);
         if (body.name) me.name = cleanName(body.name);
+      });
+      break;
+
+    case 'animal':
+      d = await mutate(store, code, (x) => {
+        const me = x.players.find((p) => p.id === pid && !p.left);
+        if (!me) throw new GameError('Bu odada değilsin');
+        if (!pati.ANIMAL_IDS.includes(body.animal)) throw new GameError('Geçersiz hayvan');
+        me.animal = body.animal;
       });
       break;
 
@@ -467,6 +620,42 @@ export async function handle(store, body, now = Date.now()) {
       });
       break;
 
+    case 'teamSize':
+      // Takım büyüklüğü: 1 bireysel, 2 ikili, 3 üçlü. Takımlar rastgele dağıtılır; oda sahibi sonra elle değiştirebilir
+      d = await mutate(store, code, (x) => {
+        requireHost(x, pid);
+        if (x.status !== 'lobby') throw new GameError('Oyun başladı');
+        const size = Number(body.size);
+        if (!TEAM_SIZES.includes(size)) throw new GameError('Geçersiz takım büyüklüğü');
+        if ((x.teamSize || 1) === size) return false;
+        x.teamSize = size;
+        x.teams = size > 1 ? randomTeams(activePlayers(x).map((p) => p.id), size) : null;
+      });
+      break;
+
+    case 'teams':
+      // Oda sahibi takımları elle dağıtır: [[id, ...], ...] (her oyuncu bir takımda, takım en çok teamSize kişi)
+      d = await mutate(store, code, (x) => {
+        requireHost(x, pid);
+        if (x.status !== 'lobby') throw new GameError('Oyun başladı');
+        if ((x.teamSize || 1) < 2) throw new GameError('Önce takım büyüklüğünü seç');
+        const ids = new Set(activePlayers(x).map((p) => p.id)), seen = new Set();
+        const teams = (Array.isArray(body.teams) ? body.teams : []).map((t) => (Array.isArray(t) ? t : []).filter((id) => ids.has(id) && !seen.has(id) && seen.add(id))).filter((t) => t.length);
+        if (teams.some((t) => t.length > x.teamSize)) throw new GameError(`Bir takımda en çok ${x.teamSize} kişi olabilir`);
+        x.teams = teams;
+        fixTeams(x);                                       // dağıtılmayan oyuncu kalırsa boş yere eklenir
+      });
+      break;
+
+    case 'shuffleTeams':
+      d = await mutate(store, code, (x) => {
+        requireHost(x, pid);
+        if (x.status !== 'lobby') throw new GameError('Oyun başladı');
+        if ((x.teamSize || 1) < 2) return false;
+        x.teams = randomTeams(activePlayers(x).map((p) => p.id), x.teamSize);
+      });
+      break;
+
     case 'addBot':
       d = await mutate(store, code, (x) => {
         requireHost(x, pid);
@@ -474,6 +663,7 @@ export async function handle(store, body, now = Date.now()) {
         if (activePlayers(x).length >= MAX_PLAYERS) throw new GameError('Oda dolu');
         const name = BOT_NAMES.find((n) => !x.players.some((p) => p.name === n)) || `Bot${x.players.length}`;
         x.players.push({ id: 'bot-' + uid(6), name, color: nextColor(x), bot: true, look: randomLook() });
+        fixTeams(x);
       });
       break;
 
@@ -484,6 +674,7 @@ export async function handle(store, body, now = Date.now()) {
         const before = x.players.length;
         x.players = x.players.filter((p) => !(p.bot && p.id === body.botId));
         if (x.players.length === before) return false;
+        fixTeams(x);
       });
       break;
 
@@ -500,13 +691,20 @@ export async function handle(store, body, now = Date.now()) {
       d = await mutate(store, code, (x) => {
         const me = x.players.find((p) => p.id === pid && !p.left);
         if (!me) throw new GameError('Bu odada değilsin');
-        const k = Number(body.k);
-        if (!Number.isInteger(k) || k < 0 || k >= QUICK.length) throw new GameError('Geçersiz mesaj');
+        // Ya hazır mesaj (k) ya da serbest yazı (text); yazı temizlenir ve filtrelenir
+        let entry;
+        if (typeof body.text === 'string') {
+          try { entry = { x: cleanChat(body.text) }; } catch (e) { throw new GameError(e.message); }
+        } else {
+          const k = Number(body.k);
+          if (!Number.isInteger(k) || k < 0 || k >= QUICK.length) throw new GameError('Geçersiz mesaj');
+          entry = { k };
+        }
         x.chat = (x.chat || []).filter((c) => now - c.t < 15000);
         const mine = x.chat.filter((c) => c.p === pid).pop();
         if (mine && now - mine.t < 1200) throw new GameError('Biraz yavaş 🙂');
         x.chatN = (x.chatN || 0) + 1;
-        x.chat.push({ n: x.chatN, p: pid, k, t: now });
+        x.chat.push({ n: x.chatN, p: pid, ...entry, t: now });
         if (x.chat.length > 30) x.chat.shift();
         me.seen = now;
       });
@@ -583,29 +781,58 @@ export async function handle(store, body, now = Date.now()) {
         if (x.g.simHost !== pid) throw new GameError('Oyunu yalnızca oda sahibi yönetir');
         const rank = cleanRanking(x, body.ranking);
         playerOf(x, pid).seen = now;
-        if (action === 'rtResult') endGame(x, rank, now + 1500);
+        if (action === 'rtResult') endGame(x, rank, now + 1500, { dnf: Array.isArray(body.dnf) ? body.dnf.filter((id) => participants(x).includes(id)) : [] });
         else { x.g.prov = rank; x.g.provAt = now; }
       });
       break;
 
     case 'leave':
       d = await mutate(store, code, (x) => {
-        const me = x.players.find((p) => p.id === pid);
-        if (!me || me.left) return false;
-        if (x.status === 'lobby') {
-          x.players = x.players.filter((p) => p.id !== pid);
-        } else {
-          me.left = true; // listede kalsın ki skor tablosunda adı görünsün; sonraki oyunlara alınmaz
-          if (x.status === 'playing' && x.g.alive[pid] && !GAMES[x.kind].realtime) {
-            x.g.alive[pid] = false;
-            x.g.outs.unshift([pid]); // oyundan çıkan en son sıraya
-            delete x.actions[pid];
-            const rank = GAMES[x.kind].ranking(x, participants(x));
-            if (rank) endGame(x, rank, now);
-            else if (now >= x.roundStart && humansReady(x, now)) resolveRound(x, now);
-          }
-        }
+        if (!removePlayer(x, pid, now, false)) return false;
         transferHost(x);
+      });
+      break;
+
+    case 'kick':
+      // Yönetici bir oyuncuyu (ya da botu) odadan çıkarır; çıkarılan geri giremez
+      d = await mutate(store, code, (x) => {
+        requireAdmin(x, pid);
+        const to = cleanId(body.target);
+        if (to === x.hostId) throw new GameError('Oda sahibi çıkarılamaz');
+        if (!removePlayer(x, to, now, true)) return false;
+      });
+      break;
+
+    case 'admit':
+    case 'deny':
+      // Turnuva sürerken katılmak isteyeni onayla (sonraki oyundan oynar) ya da reddet
+      d = await mutate(store, code, (x) => {
+        requireAdmin(x, pid);
+        const to = cleanId(body.target);
+        const t = x.players.find((p) => p.id === to && !p.left && p.pending);
+        if (!t) return false;
+        if (action === 'admit') delete t.pending;
+        else removePlayer(x, to, now, true);
+      });
+      break;
+
+    case 'admin':
+      // Oda sahibi başka bir oyuncuyu yönetici yapar / yöneticiliğini alır
+      d = await mutate(store, code, (x) => {
+        requireHost(x, pid);
+        const t = x.players.find((p) => p.id === cleanId(body.target) && !p.left && !p.bot);
+        if (!t || t.id === x.hostId) return false;
+        if (body.on) t.admin = true; else delete t.admin;
+      });
+      break;
+
+    case 'finish':
+      // Yönetici turu hemen bitirir: oyunun o anki durumuna göre puanlar dağıtılır (bilgi yoksa puan verilmez)
+      d = await mutate(store, code, (x) => {
+        requireAdmin(x, pid);
+        if (x.status !== 'playing') return false;
+        const st = standingNow(x);
+        endGame(x, st || [participants(x)], now + 600, st ? {} : { none: true });
       });
       break;
 
@@ -630,6 +857,15 @@ export async function handle(store, body, now = Date.now()) {
       });
       break;
 
+    case 'skip':
+      // Yönetici oyunu atlar: puan dağıtılmaz, sonraki oyuna (ya da sonuca) geçilir
+      d = await mutate(store, code, (x) => {
+        requireAdmin(x, pid);
+        if (x.status !== 'playing') return false;
+        endGame(x, [participants(x)], now + 600, { none: true });
+      });
+      break;
+
     case 'lobby':
       // Oda sahibi istediği an herkesi lobiye döndürebilir (oyun ortasında da)
       d = await mutate(store, code, (x) => {
@@ -637,6 +873,7 @@ export async function handle(store, body, now = Date.now()) {
         if (x.status === 'lobby') return false;
         x.players = activePlayers(x).filter((p) => !p.temp);
         Object.assign(x, { status: 'lobby', history: [], actions: {}, g: null, tour: null, round: 0, sig: [] });
+        fixTeams(x);
       });
       break;
 

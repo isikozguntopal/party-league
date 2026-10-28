@@ -1,5 +1,5 @@
-// 🛶 Kayık Kafilesi istemcisi: 2D (nehir yönüne dönen takip kamerası) + 3D takip + FPS (koltuğundan)
-// Nehir tohumdan üretilir (K.course); her takımın kayığında iki oyuncunun avatarı oturur, kürekleri ritimle çeker.
+// 🛶 Kayık Kafilesi istemcisi: 2D (nehir yönüne dönen takip kamerası) + 3D takip
+// Nehir tohumdan üretilir (K.course); yuvarlak kayığın dış kenarında iki oyuncunun avatarı durur, gaz salarak kayığı iter.
 import * as K from '../games/kayik.js';
 import { lerp, clamp, sfx, esc } from './util.js';
 import { drawTopAvatar, portraitURL } from './avatar2d.js';
@@ -8,8 +8,8 @@ import { loadThree, buildAvatar, animateAvatar, startEmote, makeLabel } from './
 
 const TEAM_COLORS = ['#f97316', '#22c55e', '#a855f7', '#06b6d4', '#ec4899', '#eab308', '#ef4444', '#3b82f6', '#14b8a6', '#f43f5e', '#84cc16', '#8b5cf6'];
 const GRASS = '#4f8a3c', GRASS2 = '#3f7431', SAND = '#d8c48f', WATER = '#2f86c4', WATER2 = '#246fa6', ROCK = '#8b8f97', ROCK2 = '#5f636b', WOOD = '#8a5a2b', WOOD2 = '#6b4220';
-const SEAT_NAME = ['SOL KÜREK', 'SAĞ KÜREK'];
-const HINT_TXT = { 1: '🤖 İT!', 2: '🤖 GERİ!', 3: '🤖 DUR!' };
+const SEAT_NAME = ['1. OYUNCU', '2. OYUNCU'];
+const RIM = 0.82;   // avatarların kayık merkezine uzaklığı (dünya birimi)
 
 // Kıyı süsleri (ağaç, çalı, kaya) — tohumdan, her cihazda aynı
 function makeDecor(c) {
@@ -197,45 +197,34 @@ export function createKayik(ctx) {
       } else { g.fillStyle = ROCK; g.beginPath(); g.arc(d.x, d.y, d.r * 0.5, 0, Math.PI * 2); g.fill(); }
     }
   }
-  // Kayık (ekran uzayında): gövde, takım şeridi, kürekler, oturan avatarlar
+  // Kayık (ekran uzayında): yuvarlak şamandıra, takım rengi, kenarda duran avatarlar, gaz bulutları
   function drawBoat2D(b, toS, now) {
     const t = teamsG().find((x) => x.id === b.id);
     if (!t) return;
-    const [x, y] = toS(b.x, b.y), ang = b.h - cam.a - Math.PI / 2 + Math.PI / 2; // ekran açısı (+x = pruva)
-    const L = K.BOAT_L * sc, Wd = K.BOAT_W * sc, col = teamColor(b.id);
+    if (b.dead > 0) return;                                   // patladı: yeniden doğmayı bekliyor
+    const [x, y] = toS(b.x, b.y), rot = cam.a + Math.PI / 2;      // dünya açısı → ekran açısı: a' = a - rot
+    const R = K.RAFT_R * 1.25 * sc, col = teamColor(b.id);
     g.save();
     if (b.inv > 0) g.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(now / 80));
-    g.translate(x, y); g.rotate(ang - Math.PI / 2);
-    // dalga izi
-    if (b.sp > 0.5) { g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.moveTo(-L * 0.5, 0); g.lineTo(-L * (0.5 + b.sp * 0.25), -Wd * 0.8); g.lineTo(-L * (0.5 + b.sp * 0.25), Wd * 0.8); g.closePath(); g.fill(); }
-    // gölge + gövde
-    const hull = (ox, oy) => { g.beginPath(); g.moveTo(L * 0.5 + ox, oy); g.quadraticCurveTo(L * 0.3 + ox, -Wd * 0.55 + oy, -L * 0.38 + ox, -Wd * 0.5 + oy); g.quadraticCurveTo(-L * 0.52 + ox, oy - Wd * 0.3, -L * 0.5 + ox, oy); g.quadraticCurveTo(-L * 0.52 + ox, oy + Wd * 0.3, -L * 0.38 + ox, Wd * 0.5 + oy); g.quadraticCurveTo(L * 0.3 + ox, Wd * 0.55 + oy, L * 0.5 + ox, oy); g.closePath(); };
-    hull(sc * 0.1, sc * 0.14); g.fillStyle = 'rgba(0,0,0,.28)'; g.fill();
-    hull(0, 0); g.fillStyle = WOOD; g.fill(); g.lineWidth = Math.max(1, sc * 0.06); g.strokeStyle = col; g.stroke();
-    g.beginPath(); g.ellipse(-L * 0.02, 0, L * 0.38, Wd * 0.34, 0, 0, Math.PI * 2); g.fillStyle = '#b07a43'; g.fill();
-    g.fillStyle = col; g.fillRect(L * 0.32, -Wd * 0.08, L * 0.12, Wd * 0.16);
-    // kürekler (darbe fazına göre ileri-geri süpürür)
-    for (let k = 0; k < 2; k++) {
-      const st = b.seats[k], side = k === 0 ? -1 : 1; // ekranda sol = -y (kayık yerel)
-      let sw = 0.35, depth = 1;
-      if (st.mode === 1) { sw = Math.cos(st.ph * Math.PI * 2) * 0.9; depth = Math.sin(st.ph * Math.PI * 2) > -0.2 ? 1 : 0.6; }
-      else if (st.mode === -1) { sw = -Math.cos(now / 400 * Math.PI * 2) * 0.6; }
-      const sx = 0, sy = side * Wd * 0.28;
-      const ex = sx + Math.sin(sw) * sc * 0.75, ey = sy + side * Math.cos(sw) * sc * 0.75 * depth;
-      g.strokeStyle = '#5b3a1a'; g.lineWidth = Math.max(1.5, sc * 0.06); g.lineCap = 'round';
-      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
-      g.fillStyle = col; g.beginPath(); g.ellipse(ex, ey, sc * 0.08, sc * 0.18, sw * side, 0, Math.PI * 2); g.fill();
-      if (st.mode !== 0 && depth === 1) { g.fillStyle = 'rgba(255,255,255,.5)'; g.beginPath(); g.arc(ex, ey + side * sc * 0.12, sc * 0.08, 0, Math.PI * 2); g.fill(); }
-    }
+    g.translate(x, y);
+    // gölge + dalga halkası
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.arc(sc * 0.1, sc * 0.14, R, 0, Math.PI * 2); g.fill();
+    if (b.sp > 0.5) { g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = Math.max(1, sc * 0.05); g.beginPath(); g.arc(0, 0, R * (1.05 + 0.05 * Math.sin(now / 150)), 0, Math.PI * 2); g.stroke(); }
+    // şamandıra halkası (takım renginde şeritli)
+    g.fillStyle = '#f8fafc'; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
+    g.lineWidth = R * 0.26; g.strokeStyle = col; g.beginPath(); g.arc(0, 0, R * 0.86, 0, Math.PI * 2); g.setLineDash([R * 0.5, R * 0.5]); g.stroke(); g.setLineDash([]);
+    g.lineWidth = Math.max(1, sc * 0.05); g.strokeStyle = 'rgba(15,23,42,.7)'; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(0, 0, R * 0.66, 0, Math.PI * 2); g.stroke();
+    // ahşap zemin
+    g.fillStyle = WOOD; g.beginPath(); g.arc(0, 0, R * 0.64, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = WOOD2; g.lineWidth = Math.max(1, sc * 0.03); for (let q = -2; q <= 2; q++) { g.beginPath(); g.moveTo(-R * 0.6, q * R * 0.24); g.lineTo(R * 0.6, q * R * 0.24); g.stroke(); }
     g.restore();
-    // oturan avatarlar
-    const ca = Math.cos(ang - Math.PI / 2), sa = Math.sin(ang - Math.PI / 2);
+    // kenardaki avatarlar (gaz salan yön dışarıya bakar); gaz oku
     for (let k = 0; k < 2; k++) {
-      const id = t.members[k], p = pById(id) || { look: null, color: '#888' };
-      const lx = -sc * 0.05, ly = (k === 0 ? -1 : 1) * Wd * 0.24;
-      const px = x + lx * ca - ly * sa, py = y + lx * sa + ly * ca;
-      const st = b.seats[k], lean = st.mode === 1 ? Math.cos(st.ph * Math.PI * 2) * 0.25 : 0;
-      drawTopAvatar(g, p.look, p.color, px, py, sc * 0.19, ang - Math.PI / 2 + lean * (k === 0 ? -1 : 1), { gun: false, alpha: b.inv > 0 ? 0.6 : 1 });
+      const id = t.members[k], p = pById(id) || { look: null, color: '#888' }, st = b.seats[k];
+      const wa = st.a - rot;                                     // ekran açısı
+      const px = x + Math.cos(wa) * K.RAFT_R * 1.25 * sc * 0.92, py = y + Math.sin(wa) * K.RAFT_R * 1.25 * sc * 0.92;
+      drawTopAvatar(g, p.look, p.color, px, py, sc * 0.29, wa, { gun: false, alpha: b.inv > 0 ? 0.6 : 1, spin: 0 });
+      if (st.gas) { g.fillStyle = 'rgba(190,242,100,.55)'; g.beginPath(); g.arc(px + Math.cos(wa) * sc * 0.35, py + Math.sin(wa) * sc * 0.35, sc * (0.14 + Math.random() * 0.06), 0, Math.PI * 2); g.fill(); }
     }
     // isim etiketi
     const { DPR } = ctx.size();
@@ -243,9 +232,21 @@ export function createKayik(ctx) {
     const txt = mine ? 'SİZ' : names(t).join(' & ');
     g.save(); g.font = `800 ${Math.round(10 * DPR)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'bottom';
     g.lineWidth = 3 * DPR; g.strokeStyle = 'rgba(0,0,0,.75)'; g.fillStyle = mine ? '#fff' : col;
-    g.strokeText(txt, x, y - sc * 0.75); g.fillText(txt, x, y - sc * 0.75);
-    if (b.done !== null) { g.fillText('🏁', x, y - sc * 0.75 - 12 * DPR); }
+    g.strokeText(txt, x, y - sc * 1.15); g.fillText(txt, x, y - sc * 1.15);
+    if (b.done !== null) { g.fillText('🏁', x, y - sc * 1.15 - 12 * DPR); }
     g.restore();
+  }
+  // gaz bulutu üret (her karede, gaz basan koltuk için): kenardan dışarı, rastgele yayılımla
+  function emitGas(b, dt) {
+    for (let k = 0; k < 2; k++) {
+      const st = b.seats[k]; if (!st.gas) continue;
+      const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        const a = st.a + (Math.random() - 0.5) * 0.7, v = 1.4 + Math.random() * 1.5;
+        parts.push({ x: b.x + Math.cos(st.a) * RIM, y: b.y + Math.sin(st.a) * RIM, vx: Math.cos(a) * v + b.sp * 0, vy: Math.sin(a) * v, life: 0, max: 0.55 + Math.random() * 0.45, c: i % 2 ? '#bef264' : '#a3e635', r: 0.08, grow: true });
+      }
+      if (R3) puff3D(b.x + Math.cos(st.a) * RIM, b.y + Math.sin(st.a) * RIM, st.a, 2, '#bef264');
+    }
   }
   function drawParts(dt, toS) {
     parts = parts.filter((p) => (p.life += dt) < p.max);
@@ -287,7 +288,7 @@ export function createKayik(ctx) {
     g.restore();
     const toS = toScreen(W, H, shake);
     const list = st.boats.slice().sort((a, b) => (myTeam() && a.id === myTeam().id) - (myTeam() && b.id === myTeam().id));
-    for (const b of list) if (Math.abs(b.s - s) < 30) drawBoat2D(b, toS, now);
+    for (const b of list) if (Math.abs(b.s - s) < 30) { drawBoat2D(b, toS, now); emitGas(b, dt); }
     drawParts(dt, toS);
     drawMinimap(st, W, H, DPR, fb);
     return overlay(st, W, H, DPR, now);
@@ -347,50 +348,46 @@ export function createKayik(ctx) {
       g.save(); g.textAlign = 'center'; g.textBaseline = 'middle';
       g.font = `900 ${Math.round(90 * DPR)}px system-ui`; g.lineWidth = 8 * DPR; g.strokeStyle = 'rgba(0,0,0,.6)'; g.fillStyle = '#fff';
       g.strokeText(n, W / 2, H * 0.36); g.fillText(n, W / 2, H * 0.36); g.restore();
-      if (b) pill(seat === 0 ? '⬅️ SEN SOL KÜREKTESİN' : 'SEN SAĞ KÜREKTESİN ➡️', W / 2, H * 0.5, DPR, teamColor(b.id), '#fff', 16);
-      return st.phase === 'wait' ? '📡 Herkes bağlanıyor…' : '🛶 Kürekler hazır!';
+      if (b) { pill('🕹️ Çubukla kayığın kenarında yerini seç', W / 2, H * 0.5, DPR, teamColor(b.id), '#fff', 14); pill('💨 GAZ: karakterin tersine iter', W / 2, H * 0.5 + 34 * DPR, DPR, 'rgba(8,12,28,.7)', '#bef264', 13); }
+      return st.phase === 'wait' ? '📡 Herkes bağlanıyor…' : '🛶 Hazır ol!';
     }
     if (b) {
-      // koltuk göstergesi
-      pill(seat === 0 ? '⬅️ SOL KÜREK' : 'SAĞ KÜREK ➡️', W / 2, 20 * DPR, DPR, teamColor(b.id));
+      pill(`${seat === 0 ? '1.' : '2.'} oyuncu · takım arkadaşın ${names(t).filter((_, k) => k !== seat).join('')}`, W / 2, 20 * DPR, DPR, teamColor(b.id), '#fff', 11);
       // sıra
       const total = st.boats.length, place = placeOf(st, b.id);
       g.save(); g.font = `900 ${Math.round(24 * DPR)}px system-ui`; g.textAlign = 'left'; g.textBaseline = 'top';
       g.lineWidth = 5 * DPR; g.strokeStyle = 'rgba(0,0,0,.6)'; g.fillStyle = place === 1 ? '#fbbf24' : '#93c5fd';
       const pt = `${place}./${total}`; g.strokeText(pt, 10 * DPR, listBottom + 8 * DPR); g.fillText(pt, 10 * DPR, listBottom + 8 * DPR);
-      // ritim (senkron) göstergesi + iki koltuğun durumu
+      // gaz depoları: benimki büyük, arkadaşımınki küçük
       const yy = listBottom + 40 * DPR;
       g.font = `800 ${Math.round(10 * DPR)}px system-ui`; g.lineWidth = 3 * DPR; g.fillStyle = '#fff';
-      g.strokeText('RİTİM', 10 * DPR, yy); g.fillText('RİTİM', 10 * DPR, yy);
-      g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(10 * DPR, yy + 14 * DPR, 80 * DPR, 7 * DPR);
-      const sk = clamp(b.sync, 0, 1);
-      g.fillStyle = sk > 0.8 ? '#4ade80' : sk > 0.3 ? '#facc15' : '#f87171'; g.fillRect(10 * DPR, yy + 14 * DPR, 80 * DPR * sk, 7 * DPR);
-      const icon = (m) => (m === 1 ? '🚣' : m === -1 ? '⏪' : '✋');
-      g.font = `${Math.round(14 * DPR)}px system-ui`; g.fillText(`${icon(b.seats[0].mode)}${icon(b.seats[1].mode)}`, 10 * DPR, yy + 26 * DPR);
+      g.strokeText('GAZ', 10 * DPR, yy); g.fillText('GAZ', 10 * DPR, yy);
+      for (let k = 0; k < 2; k++) {
+        const stt = b.seats[k], me = k === seat, y2 = yy + 14 * DPR + k * 11 * DPR, w = (me ? 84 : 84) * DPR;
+        g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(10 * DPR, y2, w, (me ? 8 : 6) * DPR);
+        g.fillStyle = stt.tank < 0.25 ? '#f87171' : me ? '#a3e635' : '#86efac'; g.fillRect(10 * DPR, y2, w * clamp(stt.tank, 0, 1), (me ? 8 : 6) * DPR);
+      }
       g.restore();
-      // partner gaza bastı: hemen bas!
-      const partner = 1 - seat;
-      if (b.pend === partner) pill('💨 ŞİMDİ BAS!', W / 2, H * 0.3, DPR, '#16a34a', '#fff', 20);
-      else if (b.pend === seat) pill('💨 arkadaşını bekliyor…', W / 2, H * 0.3, DPR, 'rgba(8,12,28,.7)', '#fde68a', 14);
-      // bot arkadaş ne yapmanı istiyor
-      if (b.hint && b.done === null) pill(HINT_TXT[b.hint] || '', W / 2, 50 * DPR, DPR, 'rgba(8,12,28,.7)', b.hint === 1 ? '#86efac' : '#fca5a5', 13);
-      updateBurstButton(b.seats[seat].cd);
+      updateGasButton(b.seats[seat]);
     }
-    if (st.phase === 'race' && performance.now() - goAt < 1300) return '🟢 ÇEK!';
+    if (st.phase === 'race' && performance.now() - goAt < 1300) return '🟢 GAZ!';
+    if (b && b.dead > 0) return '💥 Patladınız! Son kontrol noktasında yeniden doğuyorsunuz';
     if (b && b.done !== null) return `🏁 Şelaleye vardınız! ${placeOf(st, b.id)}. sıra · ${b.done.toFixed(1)} sn`;
     if (!b) return '👀 İzliyorsun';
     return '';
   }
-  // 💨 düğmesi: bekleme süresini üstünde göster
-  function updateBurstButton(cd) {
-    const el = ctx.stage.querySelector('[data-b="burst"]');
-    if (!el) return;
-    const txt = cd > 0 ? String(Math.ceil(cd)) : '💨';
-    if (txt === lastBurstUI) return;
-    lastBurstUI = txt; el.textContent = txt; el.classList.toggle('kk-cd', cd > 0);
+  // 💨 GAZ düğmesi: depo yüzdesini üstünde göster
+  const ctlBtn = (id) => (ctx.stage.parentNode || ctx.stage).querySelector(`.ctl [data-b="${id}"]`);
+  let lastGasUI = '';
+  function updateGasButton(stt) {
+    const el = ctlBtn('push');
+    if (!el || !stt) return;
+    const txt = stt.lock ? '⏳' : `${Math.round(clamp(stt.tank, 0, 1) * 100)}%`;
+    const key = txt + (stt.gas ? 'g' : '');
+    if (key === lastGasUI) return;
+    lastGasUI = key; el.innerHTML = `<span class="kk-ic">💨</span><small>GAZ ${txt}</small>`; el.classList.toggle('kk-cd', !!stt.lock);
   }
 
-  // ---------- 3D ----------
   async function ensure3D() {
     if (R3 || loading) return;
     loading = true;
@@ -538,39 +535,27 @@ export function createKayik(ctx) {
     R3.dyn = dyn;
     R3.camPos = null;
   }
-  // Kayık modeli: oyulmuş gövde, iki avatar oturur, kürekleri var
+  // Kayık modeli: yuvarlak şamandıra; iki avatar dış kenarında durur (konumları her karede durumdan gelir)
   function boat3(b) {
     let bm = R3.boats.get(b.id);
     if (bm) return bm;
     const THREE = T, t = teamsG().find((x) => x.id === b.id);
     const grp = new THREE.Group(), col = teamColor(b.id);
-    const shape = new THREE.Shape();
-    const L = K.BOAT_L / 2, Wd = K.BOAT_W / 2;
-    shape.moveTo(L, 0); shape.quadraticCurveTo(L * 0.55, Wd * 1.05, -L * 0.75, Wd); shape.quadraticCurveTo(-L * 1.02, Wd * 0.6, -L, 0);
-    shape.quadraticCurveTo(-L * 1.02, -Wd * 0.6, -L * 0.75, -Wd); shape.quadraticCurveTo(L * 0.55, -Wd * 1.05, L, 0);
-    const hullGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.28, bevelEnabled: false });
-    hullGeo.rotateX(-Math.PI / 2);
-    const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: WOOD })); hull.position.y = -0.12; grp.add(hull);
-    const inner = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.02, 20), new THREE.MeshLambertMaterial({ color: '#b07a43' })); inner.scale.set(L * 0.8, 1, Wd * 0.75); inner.position.y = 0.0; grp.add(inner);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.04, 6, 24), new THREE.MeshLambertMaterial({ color: col })); rim.rotation.x = Math.PI / 2; rim.scale.set(L * 0.86, Wd * 0.92, 1); rim.position.y = 0.16; grp.add(rim);
-    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.3), new THREE.MeshLambertMaterial({ color: col })); flag.position.set(L * 0.8, 0.45, 0.15); grp.add(flag);
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 5), new THREE.MeshLambertMaterial({ color: '#e5e7eb' })); mast.position.set(L * 0.8, 0.35, 0); grp.add(mast);
+    const R = K.RAFT_R * 1.25;
+    const tube = new THREE.Mesh(new THREE.TorusGeometry(R * 0.82, R * 0.2, 10, 28), new THREE.MeshLambertMaterial({ color: '#f8fafc' })); tube.rotation.x = Math.PI / 2; tube.position.y = 0.06; grp.add(tube);
+    for (let q = 0; q < 6; q++) { const a = q / 6 * Math.PI * 2; const band = new THREE.Mesh(new THREE.BoxGeometry(R * 0.34, R * 0.3, R * 0.42), new THREE.MeshLambertMaterial({ color: col })); band.position.set(Math.cos(a) * R * 0.82, 0.07, Math.sin(a) * R * 0.82); band.rotation.y = -a; grp.add(band); }
+    const deck = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.7, R * 0.7, 0.08, 24), new THREE.MeshLambertMaterial({ color: WOOD })); deck.position.y = -0.02; grp.add(deck);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.6, 5), new THREE.MeshLambertMaterial({ color: '#e5e7eb' })); mast.position.set(0, 0.35, 0); grp.add(mast);
+    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.02), new THREE.MeshLambertMaterial({ color: col })); flag.position.set(0.16, 0.55, 0); grp.add(flag);
     const seats = [0, 1].map((k) => {
       const id = t ? t.members[k] : null, p = id && pById(id);
       const av = buildAvatar(THREE, p && p.look, p ? p.color : '#888', { gun: false });
       av.root.scale.setScalar(0.5);
-      const z = (k === 0 ? -1 : 1) * 0.2;
-      av.root.position.set(-0.05, -0.04, z);
       grp.add(av.root);
-      // kürek: omuz hizasında dönen kol; sap aşağı ve dışarı eğik
-      const piv = new THREE.Group(); piv.position.set(0.02, 0.38, z * 1.25); grp.add(piv);
-      const tilt = new THREE.Group(); piv.add(tilt);
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.15, 5), new THREE.MeshLambertMaterial({ color: '#7c4a1d' })); shaft.position.y = -0.5; tilt.add(shaft);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.32, 0.14), new THREE.MeshLambertMaterial({ color: col })); blade.position.y = -1.05; tilt.add(blade);
-      return { av, piv, tilt, side: k === 0 ? -1 : 1 };
+      return { av };
     });
     const label = makeLabel(THREE, t ? (t.members.includes(playerId) ? 'SİZ' : names(t).join(' & ')) : '?', col);
-    label.position.y = 1.05; label.scale.set(1.1, 0.27, 1); grp.add(label);
+    label.position.y = 1.15; label.scale.set(1.1, 0.27, 1); grp.add(label);
     R3.scene.add(grp);
     bm = { grp, seats, label };
     R3.boats.set(b.id, bm);
@@ -596,28 +581,18 @@ export function createKayik(ctx) {
     for (const b of st.boats) {
       const bm = boat3(b);
       bm.grp.position.set(b.x, Math.sin(ts * 2.2 + b.id) * 0.03, b.y);
-      bm.grp.rotation.set(Math.sin(ts * 1.7 + b.id) * 0.03 + (b.w || 0) * 0.04, -b.h, Math.sin(ts * 1.3) * 0.02);
-      bm.grp.visible = !(b.inv > 0 && Math.floor(now / 90) % 2 === 0);
+      bm.grp.rotation.set(Math.sin(ts * 1.7 + b.id) * 0.03, 0, Math.sin(ts * 1.3) * 0.02);
+      bm.grp.visible = !(b.dead > 0) && !(b.inv > 0 && Math.floor(now / 90) % 2 === 0);
       bm.label.visible = !(t && t.id === b.id);
       for (let k = 0; k < 2; k++) {
         const s3 = bm.seats[k], ss = b.seats[k];
         animateAvatar(s3.av, ts, { walk: 0, idle: b.done !== null });
-        // oturma: bacaklar öne
-        s3.av.legs[0].rotation.z = Math.PI / 2; s3.av.legs[1].rotation.z = Math.PI / 2;
-        let swing = 0.2, dip = 0.25;
-        if (ss.mode === 1) { swing = Math.cos(ss.ph * Math.PI * 2) * 0.8; dip = Math.sin(ss.ph * Math.PI * 2) > -0.2 ? 0.55 : 0.15; }
-        else if (ss.mode === -1) { swing = -Math.cos(ts * Math.PI * 2 / 0.9) * 0.6; dip = 0.45; }
-        // pivot y ekseninde döner: dışarı bakan kürek (+z yanında) swing > 0 iken öne (+x) gelir
-        s3.piv.rotation.y = s3.side * swing;
-        // sap aşağı ve dışarı eğik (sol koltuk -z, sağ koltuk +z)
-        s3.tilt.rotation.x = -s3.side * (0.5 + dip);
-        if (!s3.av.emote && b.done === null) {
-          // kollar öne uzanıp küreği tutar (rotation.z > 0 → kol öne)
-          for (const arm of s3.av.arms) { arm.rotation.z = 1.0 + swing * 0.5; arm.rotation.x = -s3.side * 0.3; }
-          s3.av.body.rotation.z = ss.mode === 1 ? -swing * 0.15 : 0;
-        }
+        s3.av.root.position.set(Math.cos(ss.a) * RIM, 0.0, Math.sin(ss.a) * RIM);
+        s3.av.root.rotation.y = -ss.a;                          // dışarıya bakar (gaz yönü)
+        if (!s3.av.emote && b.done === null) for (const arm of s3.av.arms) { arm.rotation.z = ss.gas ? 1.5 : 0.2; arm.rotation.x = 0; }
+        s3.av.root.visible = true;
       }
-      if (view === 'fps' && t && b.id === t.id) bm.seats[seat].av.root.visible = false; else for (const s3 of bm.seats) s3.av.root.visible = true;
+      emitGas(b, dt);
     }
     // gaz bulutları
     for (const p of R3.puffs) {
@@ -636,12 +611,8 @@ export function createKayik(ctx) {
       if (R3.camYaw === null) R3.camYaw = want;
       R3.camYaw += K.angN(want - R3.camYaw) * (1 - Math.pow(0.05, dt));
       let px, py, pz, lx, ly, lz;
-      if (view === 'fps' && t && fb.id === t.id) {
-        // kendi koltuğunun gözünden: sol = (sin h, -cos h) yönünde
-        const fx = Math.cos(fb.h), fy = Math.sin(fb.h);
-        const lxn = Math.sin(fb.h), lyn = -Math.cos(fb.h), off = seat === 0 ? 0.2 : -0.2;
-        px = fb.x + lxn * off - fx * 0.02; py = 0.62; pz = fb.y + lyn * off - fy * 0.02;
-        lx = px + fx * 4; ly = 0.35; lz = pz + fy * 4;
+      if (false) {
+        px = py = pz = lx = ly = lz = 0;
       } else {
         const fx = Math.cos(R3.camYaw), fy = Math.sin(R3.camYaw);
         px = fb.x - fx * 3.4; py = 2.3; pz = fb.y - fy * 3.4; lx = fb.x + fx * 2.5; ly = 0.2; lz = fb.y + fy * 2.5;
@@ -657,24 +628,32 @@ export function createKayik(ctx) {
     drawMinimap(st, W, H, DPR, fb);
     return overlay(st, W, H, DPR, now);
   }
-  function puff3D(x, y, h, n, color, strong) {
+  function puff3D(x, y, a0, n, color) {
     if (!R3) return;
     let k = 0;
     for (const p of R3.puffs) {
       if (p.m.visible) continue;
       if (k++ >= n) break;
-      const a = h + Math.PI + (Math.random() - 0.5) * (strong ? 0.6 : 1.6), v = (strong ? 2.2 : 1.2) * (0.5 + Math.random());
-      p.m.visible = true; p.life = 0; p.max = 0.7 + Math.random() * 0.5;
+      const a = a0 + (Math.random() - 0.5) * 0.9, v = 1.3 * (0.5 + Math.random());
+      p.m.visible = true; p.life = 0; p.max = 0.6 + Math.random() * 0.5;
       p.m.material.color.set(color);
-      p.m.position.set(x - Math.cos(h) * 0.8, 0.3, y - Math.sin(h) * 0.8);
+      p.m.position.set(x, 0.3, y);
       p.vx = Math.cos(a) * v; p.vz = Math.sin(a) * v; p.vy = 0.3 + Math.random() * 0.5;
     }
   }
 
+  // çubuk (ekran/kamera yönü) → dünya yönü; 2D'de kamera nehir yönüne döner, 3D takipte kamera yönüne göre
+  const stickWorld = (x, y, view) => {
+    const L = Math.hypot(x, y);
+    if (L < 0.25) return { x: 0, y: 0 };
+    if (view !== 'top' && R3 && R3.camYaw !== null) { const fx = Math.cos(R3.camYaw), fy = Math.sin(R3.camYaw); return { x: x * -fy + -y * fx, y: x * fx + -y * fy }; }
+    const phi = cam.a + Math.PI / 2;
+    return { x: x * Math.cos(phi) - y * Math.sin(phi), y: x * Math.sin(phi) + y * Math.cos(phi) };
+  };
   const spec = {
-    kind: 'kayik', mod: K, views: ['top', 'chase', 'fps'],
-    controls: { left: 'stick', below: true, buttons: [{ id: 'push', label: 'İT', cls: 'kk-push' }, { id: 'burst', label: '💨', cls: 'kk-burst' }] },
-    input: (cc) => ({ push: !!cc.btn.push, x: Math.round(cc.x * 100) / 100, y: Math.round(cc.y * 100) / 100, bomb: !!cc.pressed.burst }),
+    kind: 'kayik', mod: K, views: ['top', 'chase'],
+    controls: { left: 'stick', below: true, buttons: [{ id: 'push', label: '<span class="kk-ic">💨</span><small>GAZ</small>', cls: 'kk-push' }] },
+    input: (cc, view) => { const w = stickWorld(cc.x, cc.y, view); return { push: !!cc.btn.push, x: w.x, y: w.y }; },
     setBot: (sim, id) => { for (const b of sim.boats) b.members.forEach((m, k) => { if (m === id) b.bots[k] = true; }); },
     onState(s) { if (s.g && s.g.seed != null) setCourse(s.g.seed); },
     interp(a, b, k) {
@@ -683,7 +662,7 @@ export function createKayik(ctx) {
         boats: b.boats.map((bb) => {
           const ba = a.boats.find((x) => x.id === bb.id) || bb;
           if (Math.hypot(bb.x - ba.x, bb.y - ba.y) > 3) return bb; // yeniden doğuş: atla
-          return { ...bb, x: lerp(ba.x, bb.x, k), y: lerp(ba.y, bb.y, k), h: ba.h + K.angN(bb.h - ba.h) * k, s: lerp(ba.s, bb.s, k) };
+          return { ...bb, x: lerp(ba.x, bb.x, k), y: lerp(ba.y, bb.y, k), h: ba.h + K.angN(bb.h - ba.h) * k, s: lerp(ba.s, bb.s, k), seats: bb.seats.map((sb, q) => ({ ...sb, a: ba.seats[q].a + K.angN(sb.a - ba.seats[q].a) * k, tank: lerp(ba.seats[q].tank, sb.tank, k) })) };
         }),
       };
     },
@@ -700,13 +679,10 @@ export function createKayik(ctx) {
           for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, v = 1 + Math.random() * 2; parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.5, c: '#e0f2fe', r: 0.08 }); }
           if (mine && R3 && R3.boats.get(e.team) && (e.k || 0) >= 2) for (const s3 of R3.boats.get(e.team).seats) startEmote(s3.av, 'surprise', performance.now() / 1000);
         }
-        if (e.e === 'burst') {
-          sfx(e.sync ? 'boom' : 'shot');
-          if (mine && e.sync) { shakeT = performance.now() + 300; if (navigator.vibrate) navigator.vibrate([40, 30, 80]); }
-          const h = b ? b.h : 0, n = e.sync ? 18 : 9;
-          for (let i = 0; i < n; i++) { const a = h + Math.PI + (Math.random() - 0.5) * (e.sync ? 0.7 : 1.8), v = (e.sync ? 3 : 1.6) * (0.4 + Math.random()); parts.push({ x: e.x - Math.cos(h) * 0.8, y: e.y - Math.sin(h) * 0.8, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.8 + Math.random() * 0.4, c: e.sync ? (i % 2 ? '#bef264' : '#fde047') : '#a3e635', r: 0.15, grow: true }); }
-          puff3D(e.x, e.y, h, n, e.sync ? '#d9f99d' : '#a3e635', !!e.sync);
-          if (R3 && R3.boats.get(e.team)) for (const s3 of R3.boats.get(e.team).seats) startEmote(s3.av, e.sync ? 'cheer' : 'surprise', performance.now() / 1000);
+        if (e.e === 'boom') {
+          sfx('boom'); if (mine) { shakeT = performance.now() + 500; if (navigator.vibrate) navigator.vibrate([80, 40, 120]); }
+          for (let i = 0; i < 30; i++) { const a = Math.random() * 6.28, v = 1 + Math.random() * 4; parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.6 + Math.random() * 0.6, c: ['#f97316', '#fde047', '#ef4444', '#475569'][i % 4], r: 0.12, grow: true }); }
+          if (R3) puff3D(e.x, e.y, 0, 6, '#f97316');
         }
         if (e.e === 'cp' && mine) sfx('score');
         if (e.e === 'respawn') { if (mine) sfx('pop'); for (let i = 0; i < 8; i++) parts.push({ x: e.x, y: e.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 0, max: 0.5, c: '#93c5fd', r: 0.08 }); }
@@ -737,7 +713,7 @@ export function createKayik(ctx) {
       const t = myTeam();
       if (!t) return '👀 İzleyici';
       const b = st && st.boats.find((x) => x.id === t.id), seat = mySeat();
-      return `🛶 <b>${SEAT_NAME[seat]}</b>${b ? ` · Sıra <b>${placeOf(st, b.id)}/${st.boats.length}</b> · 💨 <b>${b.seats[seat].cd > 0 ? Math.ceil(b.seats[seat].cd) + ' sn' : 'hazır'}</b>` : ''}`;
+      return `🛶 <b>${SEAT_NAME[seat]}</b>${b ? ` · Sıra <b>${placeOf(st, b.id)}/${st.boats.length}</b> · 💨 <b>%${Math.round(clamp(b.seats[seat].tank, 0, 1) * 100)}</b>` : ''}`;
     },
     dispose() { if (R3) { R3.renderer.dispose(); R3 = null; } },
   };

@@ -14,14 +14,18 @@ export const KIND = 'kor';
 export const TITLE = 'Kör Koşu';
 export const EMOJI = '🏃';
 export const RULES = [
-  'İkili takım: koşucu sadece önünü görür, yönlendirici tüm parkuru.',
-  'Yol uçurumun üstünde kıvrılır; kenardan düşen ya da engele çarpan kontrol noktasına döner.',
-  'Yönlendirici konuşarak ya da haritaya dokunarak (kısa işaret) yol gösterir. En hızlı takım kazanır!',
+  'İkili takım: koşucu sadece önünü görür, yönlendirici tüm parkuru ve nereye gidileceğini.',
+  'Başlangıçta 6 kapı var, hepsi aynı görünür ama yalnızca biri kırılır: yönlendirici hangisi olduğunu bilir. Kırınca parkur başlar.',
+  'Herkes aynı yolda koşar: TUT düğmesiyle rakibi yakalayıp ittirebilir, uçuruma atabilirsin; o da seni atabilir!',
+  'Dönen platformlara, kaygan buza, bıçaklara ve çivili baltalara dikkat. Düşen ya da çarpan kontrol noktasına döner. En hızlı takım kazanır.',
 ];
 const base = realtimeServer();
 export const { realtime, PLACE_MS, normalize, auto, resolve, ranking } = base;
 export const PW = 4.4, R = 0.3, SPEED = 3.6, CP_EVERY = 22, MAX_TIME = 150, FALL_T = 0.9, DS = 0.5, BEAM_W = 1.1;
 export const PING_SHOW = 1.1; // işaretin ekranda kaldığı süre (sn)
+export const DOOR_S = 6.5, DOOR_N = 6;          // başlangıç kapıları: yolun genişliğine 6 kapı, biri kırılır
+export const GRAB_RANGE = 1.15, GRAB_MAX = 1.3, GRAB_CD = 1.6, THROW_V = 10, TURN_R = 2.15, ICE_FRIC = 1.5;
+export const doorSeg = (i) => { const w = PW / DOOR_N; return [-PW / 2 + i * w, -PW / 2 + (i + 1) * w]; };
 
 export function init(ids, env) {
   const teams = pairUp(env || { players: ids.map((id) => ({ id, bot: false })), addBot: () => ({ id: 'x', bot: true }) });
@@ -89,22 +93,23 @@ export function course(seed) {
     const dx = px[i1] - px[i0], dy = py[i1] - py[i0], d = Math.hypot(dx, dy) || 1;
     tx[i] = dx / d; ty[i] = dy / d;
   }
-  const c = { seed, LEN, n, px, py, tx, ty, w, cps: [0], walls: [], movers: [], spinners: [], pends: [], stomps: [], blinks: [], belts: [], boulders: [], beams: [], stubs: [] };
+  const c = { seed, LEN, n, px, py, tx, ty, w, cps: [0], walls: [], movers: [], spinners: [], pends: [], stomps: [], blinks: [], turns: [], ices: [], boulders: [], beams: [], stubs: [], door: { s: DOOR_S, n: DOOR_N, good: 0 } };
   for (let cs = CP_EVERY; cs < LEN - 10; cs += CP_EVERY) c.cps.push(cs);
   const heading = (ss) => { const i = clamp(Math.round(ss / DS), 0, n - 1); return Math.atan2(ty[i], tx[i]); };
   const curv = (s0, s1) => { let d = heading(s1) - heading(s0); while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return Math.abs(d); };
 
   // 2) Engeller: yol boyunca birbiriyle çakışmayan yuvalar
-  let sp = 8;
+  let sp = 16;
   while (sp < LEN - 10) {
     const r = Rn();
-    const kind = r < 0.2 ? 'wall' : r < 0.31 ? 'mover' : r < 0.41 ? 'spinner' : r < 0.51 ? 'pend' : r < 0.61 ? 'stomp' : r < 0.7 ? 'blink' : r < 0.79 ? 'belt' : r < 0.87 ? 'boulder' : 'beam';
-    const foot = { wall: 1, mover: 1, spinner: 1, pend: 1, stomp: 1, blink: 2.4 + Rn(), belt: 4 + Rn() * 2, boulder: 6 + Rn() * 3, beam: 4 + Rn() * 2 }[kind];
+    const kind = r < 0.18 ? 'wall' : r < 0.27 ? 'mover' : r < 0.36 ? 'spinner' : r < 0.46 ? 'pend' : r < 0.55 ? 'stomp' : r < 0.63 ? 'blink' : r < 0.72 ? 'turn' : r < 0.82 ? 'ice' : r < 0.9 ? 'boulder' : 'beam';
+    const foot = { wall: 1, mover: 1, spinner: 1, pend: 1, stomp: 1, blink: 2.4 + Rn(), turn: 4.6, ice: 5 + Rn() * 3, boulder: 6 + Rn() * 3, beam: 4 + Rn() * 2 }[kind];
     const cp = c.cps.find((v) => v > sp - 2.5 && v < sp + foot + 2.5);
     if (cp) { sp = cp + 2.5; continue; }
     if (sp + foot > LEN - 8) break;
     const rigid = kind === 'wall' || kind === 'mover' || kind === 'spinner' || kind === 'pend' || kind === 'stomp';
     if (rigid && curv(sp - 1.2, sp + 1.2) > 0.3) { sp += 1; continue; }
+    if (kind === 'turn' && curv(sp - 0.5, sp + foot + 0.5) > 0.3) { sp += 1; continue; }
     const s0 = Math.round(sp * 10) / 10;
     if (kind === 'wall') {
       const gaps = [];
@@ -121,7 +126,8 @@ export function course(seed) {
     else if (kind === 'pend') c.pends.push({ s: s0, arm: 2.2, amax: 1.1, sp: 1.6 + Rn() * 0.6, ph: Rn() * 6.28 });
     else if (kind === 'stomp') { const full = Rn() < 0.6; c.stomps.push({ s: s0, u: full ? 0 : (Rn() < 0.5 ? -1 : 1) * PW / 4, wu: full ? PW + 0.2 : PW / 2 + 0.1, sp: 0.36 + Rn() * 0.14, ph: Rn() }); }
     else if (kind === 'blink') c.blinks.push({ s0, s1: Math.round((s0 + foot) * 10) / 10, sp: 0.22 + Rn() * 0.06, ph: Rn(), duty: 0.6 });
-    else if (kind === 'belt') c.belts.push({ s0, s1: Math.round((s0 + foot) * 10) / 10, v: (Rn() < 0.5 ? -1 : 1) * (1.4 + Rn() * 0.5) });
+    else if (kind === 'turn') c.turns.push({ s: Math.round((s0 + foot / 2) * 10) / 10, u: 0, r: TURN_R, w: (Rn() < 0.5 ? -1 : 1) * (0.75 + Rn() * 0.45), ph: Rn() * 6.28 });
+    else if (kind === 'ice') c.ices.push({ s0, s1: Math.round((s0 + foot) * 10) / 10 });
     else if (kind === 'boulder') c.boulders.push({ s0, s1: Math.round((s0 + foot) * 10) / 10, u: (Rn() < 0.5 ? -1 : 1) * 1.0, r: 0.5, v: 2.6 + Rn() * 0.8, ph: Rn() * 20 });
     else if (kind === 'beam') c.beams.push({ s0, s1: Math.round((s0 + foot) * 10) / 10 });
     sp += foot + 2.5 + Rn() * 2.5;
@@ -131,6 +137,7 @@ export function course(seed) {
     const si = i * DS, d = si < b.s0 ? b.s0 - si : si > b.s1 ? si - b.s1 : 0;
     if (d < 1) w[i] = Math.min(w[i], BEAM_W + (PW - BEAM_W) * d);
   }
+  c.door.good = Math.floor(Rn() * DOOR_N);
   // 3) Sahte kollar: yolun kenarından çıkan, hiçbir yere gitmeyen kısa çıkmazlar
   const nst = 4 + Math.floor(Rn() * 3);
   for (let k = 0; k < nst; k++) {
@@ -176,6 +183,9 @@ export function stompH(st, t) {
 }
 export const blinkOn = (b, t) => frac(t * b.sp + b.ph) < b.duty;
 export const blinkLeft = (b, t) => { const p = frac(t * b.sp + b.ph); return p < b.duty ? (b.duty - p) / b.sp : -(1 - p) / b.sp; }; // + = kalan açık süre, − = açılmasına kalan
+export const turnA = (tn, t) => tn.ph + t * tn.w;           // dönen platformun açısı
+export const inIce = (c, s) => c.ices.some((z) => s >= z.s0 && s <= z.s1);
+export const turnAt = (c, s, u) => c.turns.find((tn) => Math.hypot(s - tn.s, u - tn.u) < tn.r);
 export const boulderS = (b, t) => b.s1 - frac((t * b.v + b.ph) / (b.s1 - b.s0)) * (b.s1 - b.s0);
 
 function segDist(px, py, ax, ay, bx, by) {
@@ -201,6 +211,18 @@ export function onGround(c, s, u, t) {
   const p = world(c, s, u);
   return c.stubs.some((st) => { const dx = p.x - st.x, dy = p.y - st.y, cs = Math.cos(st.a), sn = Math.sin(st.a); const al = dx * cs + dy * sn, ac = -dx * sn + dy * cs; return al >= -0.3 && al <= st.len && Math.abs(ac) <= st.wd / 2; });
 }
+// başlangıç kapıları: kapalıyken tüm yol kapalıdır; kırılabilir kapıya değen takımın kapısı açılır (diğerleri sert duvar)
+function pushDoors(c, tm, p, events) {
+  if (tm.doorOpen || Math.abs(p.s - c.door.s) > 0.3 + R + 0.05) return;
+  for (let i = 0; i < DOOR_N; i++) {
+    const [a, b] = doorSeg(i);
+    const cu = clamp(p.u, a, b), cs = clamp(p.s, c.door.s - 0.3, c.door.s + 0.3);
+    const du = p.u - cu, ds = p.s - cs, d = Math.hypot(du, ds);
+    if (d >= R) continue;
+    if (i === c.door.good) { tm.doorOpen = true; events.push({ e: 'door', team: tm.id, i }); return; }
+    if (d < 1e-6) p.s = c.door.s + (p.s > c.door.s ? 0.3 + R : -0.3 - R); else { p.u = cu + (du / d) * R; p.s = cs + (ds / d) * R; }
+  }
+}
 // duvarlarla çarpışma (s,u uzayında): daireyi dikdörtgenlerin dışına it
 function pushWalls(c, p) {
   for (const w of c.walls) {
@@ -215,7 +237,7 @@ function pushWalls(c, p) {
 
 export function createSim(players, g) {
   const c = course(g.seed);
-  const teams = g.teams.map((t) => ({ ...t, s: 0, u: 0, stun: 0, fall: 0, done: null, hits: 0, cp: 0, ping: null, skill: 0.78 + Math.random() * 0.17, think: 0, tu: 0 }));
+  const teams = g.teams.map((t) => ({ ...t, s: 0, u: 0, stun: 0, fall: 0, done: null, hits: 0, cp: 0, ping: null, skill: 0.78 + Math.random() * 0.17, think: 0, tu: 0, vs: 0, vu: 0, ks: 0, ku: 0, doorOpen: false, grabbing: null, held: null, grabT: 0, grabCd: 0, immune: 0, shoves: 0 }));
   return { t: 0, phase: 'wait', cd: 3, seed: g.seed, c, teams, events: [] };
 }
 export const startCountdown = (sim) => { if (sim.phase === 'wait') { sim.phase = 'count'; sim.cd = 3; } };
@@ -269,11 +291,44 @@ export function botRun(sim, tm, dt) {
   let fwd = inside ? 1 : wait ? 0 : danger ? (here ? -0.8 : creep) : 1;
   const du = tm.tu - tm.u;
   if (wall && wall.s > tm.s && wall.s - tm.s < 1.4 && Math.abs(du) > 0.35) fwd = Math.min(fwd, 0);
+  // başlangıç kapıları: doğru kapının önüne hizalan, sonra üstüne yürü
+  if (!tm.doorOpen && tm.s < DOOR_S + 0.6) {
+    const [a, b] = doorSeg(c.door.good), mid = (a + b) / 2, d2 = mid - tm.u;
+    const frd = frame(c, tm.s);
+    return { x: (Math.abs(d2) < 0.45 ? 1 : 0) * frd.tx + clamp(d2 * 3, -1, 1) * frd.nx, y: (Math.abs(d2) < 0.45 ? 1 : 0) * frd.ty + clamp(d2 * 3, -1, 1) * frd.ny };
+  }
   const fr = frame(c, tm.s), lu = here ? 0 : clamp(du * 3, -1, 1); // geri çekilirken yana kaymaz
   return { x: fwd * fr.tx + lu * fr.nx, y: fwd * fr.ty + lu * fr.ny };
 }
 
 function respawn(c, tm) { tm.s = checkpointS(c, tm.s); tm.u = 0; tm.tu = 0; tm.think = 0; }
+
+const wxy = (c, tm) => world(c, tm.s, tm.u);
+const active = (tm) => tm.done === null && tm.fall <= 0;
+// Tutma: yakındaki rakip koşucuyu yakala (TUT basılı), taşıyıp bırakınca fırlat; kenara taşırsan düşer
+function releaseGrab(sim, tm, victim, dirx, diry) {
+  const c = sim.c;
+  tm.grabbing = null; tm.grabT = 0; tm.grabCd = GRAB_CD;
+  if (!victim) return;
+  victim.held = null; victim.immune = 1.2;
+  let dx = dirx, dy = diry; const L = Math.hypot(dx, dy);
+  if (L < 0.2) { const a = wxy(c, tm), b = wxy(c, victim); dx = b.x - a.x; dy = b.y - a.y; const l2 = Math.hypot(dx, dy) || 1; dx /= l2; dy /= l2; } else { dx /= L; dy /= L; }
+  const fr = frame(c, victim.s);
+  victim.ks = (dx * fr.tx + dy * fr.ty) * THROW_V; victim.ku = (dx * fr.nx + dy * fr.ny) * THROW_V;
+  victim.stun = Math.max(victim.stun, 0.35);
+  tm.shoves++;
+  const w = wxy(c, victim);
+  sim.events.push({ e: 'throw', team: tm.id, to: victim.id, x: w.x, y: w.y });
+}
+function tryFall(sim, tm, c, el) {
+  if (onGround(c, tm.s, tm.u, el)) return false;
+  const w = world(c, tm.s, tm.u);
+  tm.fall = FALL_T; tm.vs = tm.vu = tm.ks = tm.ku = 0;
+  if (tm.held !== null) { const h = sim.teams.find((x) => x.id === tm.held); if (h) { h.grabbing = null; h.grabCd = GRAB_CD; } tm.held = null; }
+  if (tm.grabbing !== null) { const v = sim.teams.find((x) => x.id === tm.grabbing); if (v) v.held = null; tm.grabbing = null; }
+  sim.events.push({ e: 'fall', team: tm.id, x: w.x, y: w.y });
+  return true;
+}
 
 export function stepSim(sim, dt, inputs) {
   sim.events = [];
@@ -286,47 +341,109 @@ export function stepSim(sim, dt, inputs) {
   }
   if (sim.phase !== 'run') return sim.events;
   const c = sim.c, el = sim.t - sim.t0;
+  const byId = Object.fromEntries(sim.teams.map((tm) => [tm.id, tm]));
   for (const tm of sim.teams) {
     const gi = inputs[tm.guide];
     if (gi && gi.ping && (!tm.ping || gi.ping[2] !== tm.ping[2])) { tm.ping = [gi.ping[0], gi.ping[1], gi.ping[2], el]; sim.events.push({ e: 'ping', team: tm.id }); }
+    for (const k of ['grabCd', 'immune']) if (tm[k] > 0) tm[k] = Math.max(0, tm[k] - dt);
     if (tm.done !== null) continue;
     if (tm.fall > 0) {
       tm.fall -= dt;
-      if (tm.fall <= 0) { tm.fall = 0; tm.hits++; respawn(c, tm); tm.stun = 0.6; sim.events.push({ e: 'respawn', team: tm.id }); }
+      if (tm.fall <= 0) { tm.fall = 0; tm.hits++; respawn(c, tm); tm.stun = 0.6; tm.immune = 1.0; sim.events.push({ e: 'respawn', team: tm.id }); }
       continue;
     }
-    if (tm.stun > 0) { tm.stun -= dt; continue; }
-    const inp = tm.botRunner ? botRun(sim, tm, dt) : inputs[tm.runner] || {};
+    if (tm.held !== null) {                                   // yakalandı: kıpırdayamaz (tutan taşır)
+      const holder = byId[tm.held];
+      if (!holder || holder.grabbing !== tm.id || !active(holder)) tm.held = null;
+      continue;
+    }
+    if (tm.stun > 0) { tm.stun -= dt; if (tm.ks || tm.ku) { /* sersemlerken savrulma devam eder */ } else continue; }
+    const rawInp = tm.botRunner ? botRun(sim, tm, dt) : inputs[tm.runner] || {};
+    let inp = rawInp;
     let ix = inp.x || 0, iy = inp.y || 0;
     const L2 = Math.hypot(ix, iy);
     if (L2 > 1) { ix /= L2; iy /= L2; }
-    const sp = SPEED * (tm.botRunner ? tm.skill : 1);
+    const stunned = tm.stun > 0;
+    if (stunned) { ix = 0; iy = 0; }
+    // tutma: basılı tutarken yakındaki rakibi yakala; bırakınca fırlat
+    const wantGrab = tm.botRunner ? botGrab(sim, tm) : !!rawInp.grab;
+    if (tm.grabbing !== null) {
+      const victim = byId[tm.grabbing];
+      const a = wxy(c, tm), b = victim ? wxy(c, victim) : a;
+      tm.grabT += dt;
+      if (!victim || !wantGrab || tm.grabT > GRAB_MAX || !active(victim) || Math.hypot(a.x - b.x, a.y - b.y) > GRAB_RANGE * 1.8) releaseGrab(sim, tm, victim && victim.held === tm.id ? victim : null, ix, iy);
+    } else if (wantGrab && tm.grabCd <= 0 && !stunned) {
+      let best = null, bd = GRAB_RANGE;
+      const a = wxy(c, tm);
+      for (const o of sim.teams) { if (o === tm || !active(o) || o.held !== null || o.immune > 0 || o.grabbing !== null) continue; const b = wxy(c, o); const d = Math.hypot(a.x - b.x, a.y - b.y); if (d < bd) { bd = d; best = o; } }
+      if (best) { tm.grabbing = best.id; best.held = tm.id; tm.grabT = 0; best.vs = best.vu = 0; sim.events.push({ e: 'grab', team: tm.id, to: best.id }); }
+    }
+    if (tm.botRunner && tm.grabbing !== null) { const v = byId[tm.grabbing]; const sg = v && v.u >= 0 ? 1 : -1, f0 = frame(c, tm.s); ix = f0.nx * sg; iy = f0.ny * sg; }   // bot: tuttuğu rakibi en yakın kenara doğru iter
+    let botEdge = false;
+    if (tm.botRunner && tm.grabbing !== null && (tm.u * (ix * 0 + Math.sign(frame(c, tm.s).nx * ix + frame(c, tm.s).ny * iy)) >= widthAt(c, tm.s) / 2 - 0.85)) botEdge = true;   // bot kendisi kenara yaklaşınca durur ve bırakır
+    const carry = tm.grabbing !== null ? (botEdge ? 0 : 0.7) : 1;
+    const sp = SPEED * (tm.botRunner ? tm.skill : 1) * carry;
     const fr = frame(c, tm.s);
-    const vs = ix * fr.tx + iy * fr.ty, vu = ix * fr.nx + iy * fr.ny;
-    const p = { s: clamp(tm.s + vs * sp * dt, 0, c.LEN), u: tm.u + vu * sp * dt };
-    for (const b of c.belts) if (p.s >= b.s0 && p.s <= b.s1) p.u += b.v * dt;
+    // hedef hız (yerel çerçeve); buzda yavaş uyum (kayma)
+    const ts = (ix * fr.tx + iy * fr.ty) * sp, tu = (ix * fr.nx + iy * fr.ny) * sp;
+    if (inIce(c, tm.s)) { const k = Math.min(1, ICE_FRIC * dt); tm.vs += (ts - tm.vs) * k; tm.vu += (tu - tm.vu) * k; } else { tm.vs = ts; tm.vu = tu; }
+    const s0 = tm.s, u0 = tm.u;
+    const p = { s: clamp(tm.s + (tm.vs + tm.ks) * dt, 0, c.LEN), u: tm.u + (tm.vu + tm.ku) * dt };
+    if (tm.ks || tm.ku) { const f = Math.exp(-5 * dt); tm.ks *= f; tm.ku *= f; if (Math.abs(tm.ks) + Math.abs(tm.ku) < 0.3) tm.ks = tm.ku = 0; }
+    // dönen platform: üstündekini merkez etrafında döndürür
+    for (const tn of c.turns) {
+      const rs = p.s - tn.s, ru = p.u - tn.u;
+      if (Math.hypot(rs, ru) < tn.r) { const a = tn.w * dt, ca = Math.cos(a), sa = Math.sin(a); p.s = tn.s + rs * ca - ru * sa; p.u = tn.u + rs * sa + ru * ca; }
+    }
+    pushDoors(c, tm, p, sim.events);
     pushWalls(c, p);
     tm.s = p.s; tm.u = p.u;
-    if (!onGround(c, tm.s, tm.u, el)) {
-      const w = world(c, tm.s, tm.u);
-      tm.fall = FALL_T;
-      sim.events.push({ e: 'fall', team: tm.id, x: w.x, y: w.y });
-      continue;
-    }
+    // taşınan rakip aynı yer değiştirmeyle gelir
+    if (tm.grabbing !== null) { const v = byId[tm.grabbing]; if (v) { v.s = clamp(v.s + (tm.s - s0), 0, c.LEN); v.u += tm.u - u0; tryFall(sim, v, c, el); } }
+    if (tryFall(sim, tm, c, el)) continue;
     const hz = hazardHit(c, tm.s, tm.u, el);
     if (hz) {
       const w = world(c, tm.s, tm.u);
-      tm.hits++; tm.stun = 1.2;
+      tm.hits++; tm.stun = 1.2; tm.ks = tm.ku = 0; tm.vs = tm.vu = 0;
+      if (tm.grabbing !== null) { const v = byId[tm.grabbing]; if (v) v.held = null; tm.grabbing = null; tm.grabCd = GRAB_CD; }
       sim.events.push({ e: 'hit', team: tm.id, kind: hz, x: w.x, y: w.y });
       respawn(c, tm);
     }
     while (tm.cp + 1 < c.cps.length && tm.s >= c.cps[tm.cp + 1]) { tm.cp++; sim.events.push({ e: 'cp', team: tm.id, n: tm.cp }); }
-    if (tm.s >= c.LEN - 0.6) { tm.done = el; sim.events.push({ e: 'finish', team: tm.id }); }
+    if (tm.s >= c.LEN - 0.6) { tm.done = el; sim.events.push({ e: 'finish', team: tm.id }); if (tm.grabbing !== null) { const v = byId[tm.grabbing]; if (v) v.held = null; tm.grabbing = null; } }
   }
-  if (sim.teams.every((tm) => tm.done !== null) || el > MAX_TIME) { sim.phase = 'done'; sim.events.push({ e: 'done' }); }
+  // koşucular birbirinin içinden geçemez: çakışanlar yumuşakça ayrılır
+  for (let i = 0; i < sim.teams.length; i++) for (let j = i + 1; j < sim.teams.length; j++) {
+    const a = sim.teams[i], b = sim.teams[j];
+    if (!active(a) || !active(b) || a.grabbing === b.id || b.grabbing === a.id) continue;
+    const ds = b.s - a.s, du = b.u - a.u, d = Math.hypot(ds, du);
+    if (d < 2 * R - 0.02 && d > 1e-6) { const push = (2 * R - d) / 2; a.s -= (ds / d) * push; a.u -= (du / d) * push; b.s += (ds / d) * push; b.u += (du / d) * push; }
+  }
+  for (const tm of sim.teams) if (active(tm) && tm.held === null) tryFall(sim, tm, c, el);
+  // üçten çok takım varsa iki takım bitirince oyun kapanır; kalanlar eksi puanla bitirilir
+  if (sim.teams.every((tm) => tm.done !== null) || el > MAX_TIME || (sim.teams.length > 2 && sim.teams.filter((tm) => tm.done !== null).length >= 2)) { sim.phase = 'done'; sim.events.push({ e: 'done' }); }
   return sim.events;
 }
 
+// Bot: yakındaki rakibi (özellikle kenara yakınsa) bazen yakalayıp kenara doğru iter
+function botGrab(sim, tm) {
+  const c = sim.c;
+  if (tm.grabbing !== null) {
+    const v = sim.teams.find((x) => x.id === tm.grabbing);
+    return !!v && tm.grabT < 0.85 && Math.abs(tm.u) < widthAt(c, tm.s) / 2 - 0.85;
+  }
+  if (tm.s < 14 || tm.grabCd > 0 || tm.stun > 0) return false;
+  const a = wxy(c, tm);
+  for (const o of sim.teams) {
+    if (o === tm || !active(o) || o.held !== null || o.immune > 0) continue;
+    const b = wxy(c, o);
+    if (Math.hypot(a.x - b.x, a.y - b.y) < GRAB_RANGE * 0.9 && Math.random() < 0.25 * (tm.skill - 0.6)) return true;
+  }
+  return false;
+}
+
+// bitirememiş takımların üyeleri (oyun kapanınca eksi puan)
+export const dnfOf = (sim) => (sim.teams.some((tm) => tm.done !== null) ? sim.teams.filter((tm) => tm.done === null).flatMap((tm) => tm.members) : []);
 export function rankingOf(sim) {
   const key = (tm) => (tm.done !== null ? tm.done : 1e6 - tm.s);
   return sim.teams.slice().sort((a, b) => key(a) - key(b)).map((tm) => tm.members);
@@ -334,13 +451,13 @@ export function rankingOf(sim) {
 
 const r2 = (v) => Math.round(v * 100) / 100;
 export function snapshot(sim) {
-  return { t: r2(sim.t), ph: sim.phase, cd: r2(sim.cd), el: r2(sim.t0 ? sim.t - sim.t0 : 0), seed: sim.seed, tm: sim.teams.map((tm) => [tm.id, r2(tm.s), r2(tm.u), tm.done === null ? -1 : r2(tm.done), r2(tm.stun), r2(tm.fall), tm.hits, tm.ping, tm.cp]), ev: sim.events };
+  return { t: r2(sim.t), ph: sim.phase, cd: r2(sim.cd), el: r2(sim.t0 ? sim.t - sim.t0 : 0), seed: sim.seed, tm: sim.teams.map((tm) => [tm.id, r2(tm.s), r2(tm.u), tm.done === null ? -1 : r2(tm.done), r2(tm.stun), r2(tm.fall), tm.hits, tm.ping, tm.cp, tm.doorOpen ? 1 : 0, tm.grabbing === null ? -1 : tm.grabbing, tm.held === null ? -1 : tm.held, tm.shoves]), ev: sim.events };
 }
 export function readSnapshot(s) {
   const c = course(s.seed);
   return {
     t: s.t, phase: s.ph, cd: s.cd, el: s.el, seed: s.seed,
-    teams: s.tm.map(([id, ps, u, done, stun, fall, hits, ping, cp]) => ({ id, s: ps, u, ...world(c, ps, u), done: done < 0 ? null : done, stun, fall, hits, ping, cp })),
+    teams: s.tm.map(([id, ps, u, done, stun, fall, hits, ping, cp, door, grabbing, held, shoves]) => ({ id, s: ps, u, ...world(c, ps, u), done: done < 0 ? null : done, stun, fall, hits, ping, cp, doorOpen: !!door, grabbing: grabbing === undefined || grabbing < 0 ? null : grabbing, held: held === undefined || held < 0 ? null : held, shoves: shoves || 0 })),
     events: s.ev || [],
   };
 }

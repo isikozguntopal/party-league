@@ -4,6 +4,7 @@ import { handle, MemoryStore, POINTS, QUICK, TOUR } from '../public/game-core.js
 import * as L from '../public/games/lazer.js';
 import * as B from '../public/games/bomba.js';
 import * as Y from '../public/games/yaris.js';
+import * as PT from '../public/games/pati.js';
 import * as C from '../public/games/cizim.js';
 import * as Q from '../public/games/bilgi.js';
 import * as KS from '../public/games/keski.js';
@@ -31,7 +32,7 @@ async function room(nHumans, nBots = 0, mode = 'tour') {
 }
 // Gerçek zamanlı oyunları sunucu tarafında "oda sahibi cihazı" gibi oynatır (bot simülasyonu + rtResult)
 async function playRealtime(st, code, s, now) {
-  const mod = { yaris: Y, bomba: B, kor: KR, halat: HL, kayik: KY }[s.kind];
+  const mod = { yaris: Y, bomba: B, kor: KR, halat: HL, kayik: KY, pati: PT }[s.kind];
   const sim = mod.createSim(s.players.filter((p) => p.inGame).map((p) => ({ id: p.id, bot: true })), s.g);
   if (s.kind === 'kor') sim.teams.forEach((tm) => { tm.botRunner = true; });
   if (s.kind === 'halat') Object.values(sim.ps).forEach((p) => { p.bot = true; });
@@ -54,7 +55,7 @@ async function runUntil(st, code, cond, start = 0, maxSteps = 800) {
 }
 
 // ---------- Lazer ----------
-for (let r = 2; r <= 15; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
+for (let r = 2; r <= 10; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
 {
   const { st, code } = await room(3, 0, 'lazer');
   let r = await handle(st, { action: 'start', code, playerId: A }, 0);
@@ -135,7 +136,7 @@ for (let r = 2; r <= 15; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
   assert.equal(r.state.g.ai, 1, 'oda sahibi ilerletebilmeli');
   const it = r.state.g.shown[1];
   assert.equal(it.type, 'draw');
-  assert.ok(it.dur > 0, 'albüm çizimi süre taşımalı');
+  assert.ok(!it.art || it.dur > 0, 'albüm çizimi süre taşımalı');
   if ([A, Bp, Cp].includes(it.by)) await assert.rejects(handle(st, { action: 'gact', code, playerId: it.by, seq, vote: 1, v: 1 }, now), /Kendi/);
   const voters = [A, Bp, Cp].filter((id) => id !== it.by);
   await handle(st, { action: 'gact', code, playerId: voters[0], seq, vote: 1, v: 1 }, now);
@@ -336,7 +337,11 @@ for (let r = 2; r <= 15; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
   assert.ok(teams.some((t) => t.bot && t.members.length === 2), 'bot takıma yedek eklenmeli');
   assert.ok(r.state.players.some((p) => p.temp));
   const [d1, d2] = trio.defusers;
+  // takımlar sırayla oynar: sıra bota gelmişse onun turu geçilir
+  if (r.state.g.turn !== trio.id) r = (await runUntil(st, code, (s) => s.status === 'playing' && s.g && s.g.turn === trio.id, r.state.roundStart)).r;
+  const seq2 = r.state.seq; assert.equal(seq2, seq);
   const t0 = r.state.roundStart;
+  await assert.rejects(handle(st, { action: 'gact', code, playerId: d1, seq, m: 'wire', i: 0 }, t0 + 10), /Hazırlan/);
   await assert.rejects(handle(st, { action: 'gact', code, playerId: trio.expert, seq, m: 'wire', i: 0 }, t0 + 10), /görmüyorsun/);
   r = await handle(st, { action: 'state', code, playerId: trio.expert }, t0 + 10);
   assert.equal(r.state.g.role, 'anlatici'); assert.equal(r.state.g.bomb, null, 'anlatıcı bombayı görmez');
@@ -345,27 +350,30 @@ for (let r = 2; r <= 15; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
   const b = r.state.g.bomb;
   const ga = (pid, body, t) => handle(st, { action: 'gact', code, playerId: pid, seq, ...body }, t);
   // d1 kılavuza göre doğru çözer
-  let now = t0 + 5000;
+  let now = t0 + BB.INTRO_MS + 5000;
   r = await ga(d1, { m: 'wire', i: BB.wireToCut(b) }, now);
-  for (const k of BB.keypadOrder(b)) r = await ga(d1, { m: 'key', i: k }, now);
+  const code3 = BB.lockCode(b);
+  for (let k = 0; k < 3; k++) for (let n = 0; n < code3[k]; n++) r = await ga(d1, { m: 'lock', i: k, d: 1 }, now);
+  r = await ga(d1, { m: 'open' }, now);
   if (BB.buttonAction(b) === 'press') r = await ga(d1, { m: 'btn', a: 'press' }, now);
   else {
     r = await ga(d1, { m: 'btn', a: 'hold' }, now);
     const digit = BB.releaseDigit(r.state.g.bomb.hold.strip);
-    while (!BB.timerText(t0 + BB.TIME_MS - now).includes(digit)) now += 1000;
-    r = await ga(d1, { m: 'btn', a: 'release', timer: BB.timerText(t0 + BB.TIME_MS - now) }, now);
+    while (!BB.timerText(BB.endOf({ roundStart: t0 }) - now).includes(digit)) now += 1000;
+    r = await ga(d1, { m: 'btn', a: 'release', timer: BB.timerText(BB.endOf({ roundStart: t0 }) - now) }, now);
   }
   assert.equal(r.state.g.bomb.strikes, 0);
   assert.ok(r.state.g.bomb.done > 0, 'bomba çözüldü');
   // d2 üç hata yapar → patlar
-  const wrong = BB.keypadOrder(b)[1];
-  for (let i = 0; i < 3; i++) r = await ga(d2, { m: 'key', i: wrong }, now + 100);
-  assert.equal(r.state.last && r.state.last.seq === seq ? true : r.state.status !== 'playing', true, 'herkes bitince sonuçlanır');
+  const wheel = code3.join('') === '100' ? 1 : 0; // doğru koddan farklı bir kilit durumu
+  await ga(d2, { m: 'lock', i: wheel, d: 1 }, now + 100);
+  for (let i = 0; i < 3; i++) r = await ga(d2, { m: 'open' }, now + 100);
+  if (!(r.state.tour && r.state.tour.results.length)) r = (await runUntil(st, code, (s) => s.tour && s.tour.results.length > 0, now + 200)).r; // sıradaki bot takımın turu
   const res = r.state.tour.results[0];
   assert.deepEqual(res.ranking[0], [d1], 'ilk çözen en yüksek puanı alır');
   assert.ok(!res.ranking.flat().some((id) => id.startsWith('tmp-')), 'geçici bot puan almaz');
   assert.ok(!r.state.players.some((p) => p.temp), 'geçici bot oyun sonunda çıkar');
-  ok('Bombayı Çöz: üçlü takım (anlatıcı + 2 dinleyici), kablo/düğme/sembol kuralları, 3 hata = patlama, yedek bot');
+  ok('Bombayı Çöz: üçlü takım (anlatıcı + 2 dinleyici), kablo/düğme/şifre kilidi kuralları, 3 hata = patlama, yedek bot');
 }
 
 // ---------- Kör Koşu + Halat Çekme ----------

@@ -2,7 +2,7 @@
 // Çizgi biçimi (insan çizimleriyle aynı): [{ c: renkNo, w: kalınlıkNo, p: [x0,y0,x1,y1,...] }] koordinatlar 0..1000
 
 export const PALETTE = ['#111827', '#ef4444', '#f97316', '#facc15', '#22c55e', '#14b8a6', '#3b82f6', '#a855f7', '#ec4899', '#8b5a2b', '#9ca3af', '#ffffff'];
-export const WIDTHS = [6, 14, 28, 60];
+export const WIDTHS = [6, 14, 28, 60, 110]; // 0-3 kalem, silgi 1-4 (4 = en büyük silgi)
 
 function rng(seed) {
   let a = seed >>> 0;

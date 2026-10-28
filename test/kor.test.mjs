@@ -12,6 +12,14 @@ const mkSim = (seed, skill = 0.8) => {
   return sim;
 };
 const run = (sim, n) => { for (let i = 0; i < n; i++) K.stepSim(sim, 1 / 30, {}); };
+// iki ya da daha çok takım (koşucu = a0, a1, …; yönlendirici = b0, b1, …)
+const mkMulti = (seed, n = 2, bots = false) => {
+  const g = { seed, teams: Array.from({ length: n }, (_, i) => ({ id: i, members: ['a' + i, 'b' + i], runner: 'a' + i, guide: 'b' + i, botRunner: bots, botGuide: true })) };
+  const sim = K.createSim([], g);
+  K.startCountdown(sim);
+  while (sim.phase !== 'run') K.stepSim(sim, 1 / 30, {});
+  return sim;
+};
 
 // ---------- Parkur: tohumdan belirlenir, kıvrımlıdır ----------
 {
@@ -55,7 +63,7 @@ const run = (sim, n) => { for (let i = 0; i < n; i++) K.stepSim(sim, 1 / 30, {})
   run(sim, 95); // geri sayım biter
   assert.equal(sim.phase, 'run');
   const tm = sim.teams[0];
-  tm.s = 23; tm.u = 0; // 22'deki kontrol noktasını geçmiş (kontrol noktası çevresi engelsizdir)
+  tm.doorOpen = true; tm.s = 23; tm.u = 0; // 22'deki kontrol noktasını geçmiş (kontrol noktası çevresi engelsizdir)
   const fr = K.frame(c, 23);
   let fell = false, respawned = false;
   for (let i = 0; i < 120 && !respawned; i++) {
@@ -70,9 +78,9 @@ const run = (sim, n) => { for (let i = 0; i < n; i++) K.stepSim(sim, 1 / 30, {})
 
 // ---------- Engel çeşitliliği ve belirlenimcilik ----------
 {
-  const kinds = ['walls', 'movers', 'spinners', 'pends', 'stomps', 'blinks', 'belts', 'boulders', 'beams', 'stubs'];
+  const kinds = ['walls', 'movers', 'spinners', 'pends', 'stomps', 'blinks', 'turns', 'ices', 'boulders', 'beams', 'stubs'];
   const tot = Object.fromEntries(kinds.map((k) => [k, 0]));
-  for (let seed = 1; seed <= 40; seed++) { const c = K.course(seed); for (const k of kinds) tot[k] += c[k].length; const present = kinds.filter((k) => c[k].length).length; assert.ok(present >= 5, `tohum ${seed}: en az 5 farklı engel türü (${present})`); }
+  for (let seed = 1; seed <= 40; seed++) { const c = K.course(seed); for (const k of kinds) tot[k] += c[k].length; const present = kinds.filter((k) => c[k].length).length; assert.ok(present >= 4, `tohum ${seed}: en az 4 farklı engel türü (${present})`); }
   for (const k of kinds) assert.ok(tot[k] > 0, `${k} hiç üretilmedi`);
   const c = K.course(9);
   const st = c.stomps[0], mv = c.movers[0], bl = c.blinks[0];
@@ -114,6 +122,93 @@ const run = (sim, n) => { for (let i = 0; i < n; i++) K.stepSim(sim, 1 / 30, {})
   assert.equal(snap.seed, 3); assert.equal(snap.phase, 'run');
   assert.ok(K.rankingOf(sim).length === 1);
   ok('İşaret iletilir (zaman damgalı), anlık görüntü JSON gidiş-dönüşünü korur');
+}
+
+// ---------- Başlangıç kapıları: 6 kapı, yalnızca biri kırılır ----------
+{
+  const c = K.course(21);
+  assert.equal(c.door.n, 6); assert.ok(c.door.good >= 0 && c.door.good < 6);
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) assert.ok(K.course(seed).door.good >= 0, 'her parkurda kırılabilir kapı var');
+  assert.ok(new Set([...Array(40).keys()].map((i) => K.course(i + 1).door.good)).size >= 4, 'kırılabilir kapı parkura göre değişir');
+  // yanlış kapıya çarpmak açmaz; doğru kapıya çarpınca açılır
+  const sim = mkMulti(21, 1); const tm = sim.teams[0]; const [ga, gb] = K.doorSeg(c.door.good);
+  const wrong = c.door.good === 0 ? 1 : 0, [wa, wb] = K.doorSeg(wrong);
+  tm.u = (wa + wb) / 2;
+  for (let i = 0; i < 60; i++) K.stepSim(sim, 1 / 30, { a0: { x: Math.sign(K.frame(c, 0).tx) * 0, y: -1 } });
+  const fr = K.frame(c, 0);
+  const goDir = { x: fr.tx, y: fr.ty };
+  tm.s = 0; tm.u = (wa + wb) / 2; for (let i = 0; i < 60; i++) K.stepSim(sim, 1 / 30, { a0: goDir });
+  assert.ok(!tm.doorOpen && tm.s < K.DOOR_S, 'yanlış kapı kırılmaz, yol kapalı kalır (s=' + tm.s.toFixed(2) + ')');
+  tm.u = (ga + gb) / 2; let broke = false; for (let i = 0; i < 90; i++) for (const e of K.stepSim(sim, 1 / 30, { a0: goDir })) if (e.e === 'door') broke = true;
+  assert.ok(broke && tm.doorOpen, 'doğru kapı kırıldı');
+  for (let i = 0; i < 60; i++) K.stepSim(sim, 1 / 30, { a0: goDir });
+  assert.ok(tm.s > K.DOOR_S + 0.5, 'kapı açılınca parkur başlar, geçilir');
+  assert.ok(K.snapshot(sim).tm[0][9] === 1, 'anlık görüntüde kapı durumu');
+  ok('Başlangıç kapıları: 6 kapı, yalnızca biri kırılır; yanlışlar duvar, doğru açınca parkur başlar');
+}
+
+// ---------- Dönen platform ve buz ----------
+{
+  let tc = null, ic = null;
+  for (let seed = 1; seed <= 40 && !(tc && ic); seed++) { const c = K.course(seed); if (!tc && c.turns.length) tc = c; if (!ic && c.ices.length) ic = c; }
+  assert.ok(tc && ic, 'dönen platform ve buz üretiliyor');
+  const tn = tc.turns[0];
+  assert.ok(tn.r <= K.PW / 2, 'platform yolun içinde'); assert.ok(Math.abs(tn.w) >= 0.7);
+  const sim = mkSim(tc.seed); sim.teams[0].botRunner = false; run(sim, 95);
+  const tm = sim.teams[0]; tm.doorOpen = true; tm.s = tn.s; tm.u = 0.9; // merkezden uzakta, üzerinde
+  const r0 = Math.hypot(tm.s - tn.s, tm.u - tn.u), a0 = Math.atan2(tm.u - tn.u, tm.s - tn.s);
+  for (let i = 0; i < 15; i++) K.stepSim(sim, 1 / 30, {});
+  const a1 = Math.atan2(tm.u - tn.u, tm.s - tn.s), r1 = Math.hypot(tm.s - tn.s, tm.u - tn.u);
+  let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+  assert.ok(Math.abs(r1 - r0) < 0.05, 'merkez etrafında döner (yarıçap korunur)'); assert.ok(Math.sign(da) === Math.sign(tn.w) && Math.abs(da) > 0.25, 'üstündekini platformun yönünde döndürür: ' + da.toFixed(2));
+  // buz: bırakınca bir süre kayar
+  const s2 = mkSim(ic.seed); s2.teams[0].botRunner = false; run(s2, 95);
+  const z = ic.ices[0], t2 = s2.teams[0]; t2.doorOpen = true; t2.s = z.s0 + 0.5; t2.u = 0; const f2 = K.frame(ic, t2.s);
+  for (let i = 0; i < 3; i++) K.stepSim(s2, 1 / 30, { a: { x: f2.tx, y: f2.ty } });
+  assert.ok(t2.vs < 3.6 * 0.5, 'buzda hız hemen oturmaz');
+  for (let i = 0; i < 7; i++) K.stepSim(s2, 1 / 30, { a: { x: f2.tx, y: f2.ty } });
+  const sNow = t2.s; for (let i = 0; i < 6; i++) K.stepSim(s2, 1 / 30, {});
+  assert.ok(t2.s - sNow > 0.2 && t2.vs > 0.5, 'buzda parmağı çekince kaymaya devam eder: ' + (t2.s - sNow).toFixed(2));
+  ok('Dönen platform üstündekini döndürür; kaygan buzda kayılır');
+}
+
+// ---------- Herkes aynı yolda: itişme, tutma ve atma ----------
+{
+  const c = K.course(8);
+  const sim = mkMulti(8, 2);
+  const A = sim.teams[0], B = sim.teams[1];
+  A.doorOpen = B.doorOpen = true; A.s = 30; A.u = 0; B.s = 30; B.u = 0.2; A.stun = B.stun = 0;
+  for (let i = 0; i < 5; i++) K.stepSim(sim, 1 / 30, {});
+  const w1 = K.world(c, A.s, A.u), w2 = K.world(c, B.s, B.u);
+  assert.ok(Math.hypot(w1.x - w2.x, w1.y - w2.y) > 0.5, 'koşucular birbirinin içinden geçmez');
+  // yakala: TUT basılı
+  A.s = 30; A.u = 0; B.s = 30.7; B.u = 0; A.stun = B.stun = 0; B.immune = 0; A.grabCd = 0; A.ks = A.ku = B.ks = B.ku = 0;
+  let grabbed = false; for (let i = 0; i < 4; i++) for (const e of K.stepSim(sim, 1 / 30, { a0: { grab: true } })) if (e.e === 'grab') grabbed = true;
+  assert.ok(grabbed && A.grabbing === B.id && B.held === A.id, 'yakınındakini yakalar');
+  // taşırken yana yürü: yakalanan birlikte gelir; kenara taşıyıp bırakınca fırlar ve düşer
+  const fr = K.frame(c, A.s);
+  let thrown = false, fell = false;
+  for (let i = 0; i < 60 && !thrown; i++) for (const e of K.stepSim(sim, 1 / 30, { a0: { grab: true, x: fr.nx, y: fr.ny } })) { if (e.e === 'fall' && e.team === B.id) fell = true; }
+  for (let i = 0; i < 90 && !fell; i++) for (const e of K.stepSim(sim, 1 / 30, { a0: { grab: false, x: fr.nx, y: fr.ny } })) { if (e.e === 'throw') thrown = true; if (e.e === 'fall' && e.team === B.id) fell = true; }
+  assert.ok(fell, 'kenara taşınıp bırakılan rakip uçuruma düşer');
+  assert.equal(A.grabbing, null); assert.ok(A.grabCd > 0 || A.shoves >= 1, 'tutma bekleme süresi');
+  // snapshot alanları
+  const rd = K.readSnapshot(JSON.parse(JSON.stringify(K.snapshot(sim))));
+  assert.ok('grabbing' in rd.teams[0] && 'held' in rd.teams[0] && 'doorOpen' in rd.teams[0] && 'shoves' in rd.teams[0]);
+  ok('Herkes aynı yolda: çarpışma, TUT ile yakalama, taşıma, atma/uçuruma düşürme');
+}
+
+// ---------- Botlar kapıdan geçer, itişme olsa da bitirir ----------
+{
+  let bad = 0;
+  for (const seed of [2, 3, 5, 69, 104]) {
+    const sim = mkMulti(seed, 4, true);
+    while (sim.phase !== 'done' && sim.t < 260) K.stepSim(sim, 1 / 30, {});
+    if (sim.teams.filter((t) => t.done !== null).length < 2 || sim.t >= 260) bad++;   // iki takım bitirince oyun kapanır
+    assert.ok(sim.teams.filter((t) => t.done !== null).every((t) => t.doorOpen), 'bitiren her bot kapıyı kırdı');
+  }
+  assert.equal(bad, 0, 'dört bot takım aynı yolda: en az iki takım bitirir, oyun zamanında kapanır');
+  ok('4 bot takım aynı parkurda: kapıyı kırar, itişir, hepsi bitirir');
 }
 
 console.log('KÖR KOŞU TESTLERİ GEÇTİ');

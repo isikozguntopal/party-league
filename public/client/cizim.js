@@ -119,7 +119,7 @@ export function createCizim(ctx) {
     const el = document.createElement('div');
     if (it.type === 'draw') {
       el.className = 'cz-art'; el.dataset.n = it.n;
-      el.innerHTML = `<div class="cz-art-head"><span class="face anon">🎨</span><span><b>Gizli ressam</b> çizdi</span><em class="cz-speed2 hidden"></em></div><div class="cz-paper"></div>${voteBoxHTML(it)}`;
+      el.innerHTML = `<div class="cz-art-head">${face(it.by)}<span><b>${esc(nameOf(it.by))}</b> çizdi</span><em class="cz-speed2 hidden"></em></div><div class="cz-paper"></div>${voteBoxHTML(it)}`;
       const cv = paperCanvas();
       el.querySelector('.cz-paper').appendChild(cv);
       cards.set(it.n, { n: it.n, cv, art: null, artRef: it.art, dur: it.dur, done: false, speed: el.querySelector('.cz-speed2') });
@@ -131,8 +131,10 @@ export function createCizim(ctx) {
       if (!orig) sim = it.self ? '<span class="cz-sim">cümlenin sahibi · puan yok</span>' : `<span class="cz-sim${it.pts ? ' hit' : ''}">🎯 %${Math.round((it.sim || 0) * 100)} yakın${it.pts ? ` · +${it.pts} puan` : ''}</span>`;
       el.innerHTML = `${face(it.by)}<div class="cz-bub"><small>${esc(nameOf(it.by))} · ${orig ? '✍️ yazdı' : '🤔 tahmin etti'}</small><p>“${esc(it.text || '')}”</p>${sim}</div>`;
     }
+    // Kullanıcı yukarı kaydırdıysa (eski çizimlere bakıyorsa) yeni gelen öğe onu aşağı zorlamasın
+    const near = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 160;
     feed.appendChild(el);
-    requestAnimationFrame(() => feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' }));
+    if (near) requestAnimationFrame(() => feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' }));
   }
   function syncAlbum(s) {
     const G = s.g;
@@ -169,8 +171,8 @@ export function createCizim(ctx) {
     if (info) {
       const cur = G.shown[G.ai], w = G.waiting || 0;
       info.innerHTML = cur && cur.type === 'draw' && w > 0
-        ? (G.mustVote ? '👆 <b>Oy ver</b> — herkes oy verince devam' : `⏳ <b>${w}</b> kişinin oyu bekleniyor`)
-        : 'Her çizime <b>➕ / ➖</b> ile oy vermek zorunlu · ressamlar sonda açıklanır';
+        ? (G.mustVote ? '👆 <b>Oy ver</b> — herkes oy verince devam' : `⏳ Oy vermeyenler: <b>${(G.waitIds || []).map((id) => esc(id === playerId ? 'Sen' : nameOf(id))).join(', ')}</b>`)
+        : 'Her çizime <b>➕ / ➖</b> ile oy vermek zorunlu';
     }
   }
 

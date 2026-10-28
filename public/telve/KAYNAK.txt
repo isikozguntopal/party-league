@@ -1,0 +1,2 @@
+Telve kart resimleri: The Metropolitan Museum of Art "Open Access" koleksiyonu (CC0 / kamu malı; atıf zorunlu değil).
+Her resmin başlık, sanatçı ve Met nesne numarası kaynak.json dosyasındadır. Yeniden üretmek için: node scripts/telve-resim-bul.mjs

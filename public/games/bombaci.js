@@ -9,11 +9,15 @@ export const TITLE = 'Bombayı Çöz';
 export const EMOJI = '🧨';
 export const RULES = [
   'İkili takımlar: biri bombayı görür, diğeri kılavuzu. Konuşarak çözün!',
-  'Kablo, düğme ve sembol modüllerini çöz. 3 hata = BOOM!',
+  'Kablo, düğme ve şifre kilidi modüllerini çöz. 3 hata = BOOM!',
   'En hızlı çözen takım kazanır. Tek kalan takımda anlatıcı iki kişiye anlatır.',
 ];
-export const TIME_MS = 240000;
-export const PLACE_MS = TIME_MS;
+// Takımlar SIRAYLA oynar (her tur bir takım). Tur başında roller duyurulur (INTRO_MS), sonra süre başlar.
+export const TIME_MS = 180000;
+export const INTRO_MS = 6000;
+export const PLACE_MS = TIME_MS + INTRO_MS;
+export const startOf = (d) => d.roundStart + INTRO_MS;
+export const endOf = (d) => d.roundStart + INTRO_MS + TIME_MS;
 export const MAX_STRIKES = 3;
 
 // ---------- Kılavuz verisi (istemci de aynı veriden kılavuzu çizer) ----------
@@ -22,16 +26,19 @@ export const WIRE_NAMES = { kirmizi: 'kırmızı', mavi: 'mavi', sari: 'sarı', 
 export const BTN_COLORS = { mavi: '#2f6fd1', kirmizi: '#e03131', beyaz: '#f3f4f6', sari: '#f2c230' };
 export const BTN_LABELS = ['İPTAL', 'PATLAT', 'TUT', 'BAS'];
 export const INDICATORS = ['FRK', 'CAR', 'BOB', 'SND'];
-export const SYMS = ['Ω', 'Ψ', 'Ж', 'λ', 'Ѯ', 'Ϟ', 'Ӭ', 'Ϙ', 'Ѫ', '☆', '★', '¶', '©', '¿', 'æ', 'Ѣ', 'ϗ', 'б', 'Ѧ', 'Ͼ', 'Ͽ', 'ß', 'Φ', 'Ξ', 'Ћ', 'Љ', 'Ђ'];
-// Her sütun 7 sembol; iki sütun en fazla bir sembol paylaşır → 4 sembol tek bir sütunu belirler
-export const COLUMNS = [
-  [0, 1, 2, 3, 4, 5, 6],
-  [7, 0, 8, 9, 10, 11, 12],
-  [13, 14, 8, 15, 16, 2, 17],
-  [18, 19, 20, 11, 15, 21, 5],
-  [22, 20, 23, 24, 3, 13, 9],
-  [25, 26, 22, 17, 6, 10, 19],
+
+// 🔐 Şifre Kilidi: 3 haneli kod. Kılavuz: seri numarasındaki RAKAMLARIN ilk üçü (harfleri atla); 3'ten az rakam varsa sona 0 ekle; pil sayısı 3'ten fazlaysa tersten gir.
+export const LOCK_RULES = [
+  'Seri numarasındaki harfleri atla, yalnızca RAKAMLARA bak.',
+  'Soldan ilk üç rakam kodundur. 3\'ten az rakam varsa kalan haneleri 0 yaz.',
+  'Pil sayısı 3\'ten FAZLAYSA kodu tersten gir (3. rakam başa).',
+  'Kilidin üstündeki ▲ ▼ ile her haneyi ayarla, sonra AÇ\'a bas. Yanlış kod 1 hata!',
 ];
+export function lockCode(b) {
+  const d = b.serial.replace(/[^0-9]/g, '').split('').slice(0, 3).map(Number);
+  while (d.length < 3) d.push(0);
+  return b.batteries > 3 ? d.reverse() : d;
+}
 
 export const WIRE_RULES = {
   3: ['Hiç kırmızı yoksa → 2. kabloyu kes.', 'Değilse, son kablo beyazsa → son kabloyu kes.', 'Değilse, birden fazla mavi varsa → son mavi kabloyu kes.', 'Hiçbiri değilse → son kabloyu kes.'],
@@ -71,7 +78,6 @@ export function buttonAction(b) {
   return 'hold';
 }
 export const releaseDigit = (strip) => (strip === 'mavi' ? '4' : strip === 'sari' ? '5' : '1');
-export const keypadOrder = (b) => b.keypad.syms.slice().sort((x, y) => COLUMNS[b.keypad.col].indexOf(x) - COLUMNS[b.keypad.col].indexOf(y));
 export const timerText = (msLeft) => { const s = Math.max(0, Math.ceil(msLeft / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 function makeBomb() {
@@ -81,13 +87,11 @@ function makeBomb() {
   for (let i = 0; i < 5; i++) serial += Math.random() < 0.5 ? pick(AL) : String(Math.floor(Math.random() * 10));
   serial += String(Math.floor(Math.random() * 10));
   const n = 3 + Math.floor(Math.random() * 4);
-  const col = Math.floor(Math.random() * COLUMNS.length);
   return {
     serial, batteries: Math.floor(Math.random() * 5),
     indicators: shuffle(INDICATORS).slice(0, 1 + Math.floor(Math.random() * 2)).map((name) => ({ name, lit: Math.random() < 0.5 })),
     wires: Array.from({ length: n }, () => pick(Object.keys(WIRE_COLORS))),
     button: { color: pick(Object.keys(BTN_COLORS)), label: pick(BTN_LABELS) },
-    keypad: { col, syms: shuffle(shuffle(COLUMNS[col]).slice(0, 4)) },
   };
 }
 
@@ -99,13 +103,17 @@ export function init(ids, env) {
   teams.forEach((members, ti) => {
     const isBot = members.every((id) => bots.has(id));
     const bomb = makeBomb();
-    let expert = members.length === 1 ? null : members[0];
-    const def = members.length === 1 ? members : members.slice(1);
-    tlist.push({ id: ti, members, expert, defusers: def, bot: isBot, botT: isBot ? 70000 + Math.random() * 130000 : null, botFail: isBot && Math.random() < 0.25 });
-    for (const id of def) defusers[id] = { team: ti, bomb: JSON.parse(JSON.stringify(bomb)), cut: [], wireDone: false, btnDone: false, hold: null, keyDone: false, pressed: [], strikes: 0, doneAt: null, exploded: false };
+    // 1 kişi: tek başına; 2-3 kişi: 1 anlatıcı, kalanı bombayı görür; 4+ kişi: 2 kişi bombayı görür, kalanlar anlatır
+    const nDef = members.length === 1 ? 1 : members.length >= 4 ? 2 : members.length - 1;
+    const def = members.length === 1 ? members : members.slice(members.length - nDef);
+    const experts = members.length === 1 ? [] : members.slice(0, members.length - nDef);
+    const expert = experts[0] || null;
+    tlist.push({ id: ti, members, expert, experts, defusers: def, bot: isBot, botT: isBot ? 50000 + Math.random() * 90000 : null, botFail: isBot && Math.random() < 0.25 });
+    for (const id of def) defusers[id] = { team: ti, bomb: JSON.parse(JSON.stringify(bomb)), cut: [], wireDone: false, btnDone: false, hold: null, keyDone: false, digits: [0, 0, 0], strikes: 0, doneAt: null, exploded: false };
   });
-  return { alive: Object.fromEntries(teams.flat().map((id) => [id, true])), outs: [], teams: tlist, def: defusers };
+  return { alive: Object.fromEntries(teams.flat().map((id) => [id, true])), outs: [], teams: tlist, def: defusers, res: {} };
 }
+const turnTeam = (d) => d.g.teams[Math.min(d.round, d.g.teams.length) - 1];
 
 export const normalize = () => { throw new GameError('Bu oyunda modüllere dokunarak oynanır'); };
 export const auto = () => ({});
@@ -121,8 +129,10 @@ function checkDone(s, now, d) { if (s.wireDone && s.btnDone && s.keyDone && !s.e
 export function gact(d, pid, body, now) {
   const s = d.g.def[pid];
   if (!s) throw new GameError('Bu takımda bombayı sen görmüyorsun');
+  if (s.team !== turnTeam(d).id) throw new GameError('Sıra başka takımda, bekle 🙂');
   if (finished(s)) return false;
-  if (now > d.roundStart + TIME_MS) throw new GameError('Süre bitti');
+  if (now < startOf(d)) throw new GameError('Hazırlan, bomba birazdan başlıyor');
+  if (now > endOf(d)) throw new GameError('Süre bitti');
   const b = s.bomb;
   if (body.m === 'wire') {
     const i = Number(body.i);
@@ -138,50 +148,55 @@ export function gact(d, pid, body, now) {
       if (!s.hold) return false;
       const digit = releaseDigit(s.hold.strip);
       const shown = String(body.timer || '');
-      const real = timerText(d.roundStart + TIME_MS - now);
+      const real = timerText(endOf(d) - now);
       // istemcinin gösterdiği sayaç gerçek sayaçtan en fazla 2 sn sapabilir
       const toSec = (t) => { const [m, x] = t.split(':').map(Number); return m * 60 + x; };
       const okTime = /^\d+:\d\d$/.test(shown) && Math.abs(toSec(shown) - toSec(real)) <= 2;
       s.hold = null;
       if (want === 'hold' && okTime && shown.includes(digit)) s.btnDone = true; else strike(s, now, d);
     } else return false;
-  } else if (body.m === 'key') {
-    const i = Number(body.i);
-    if (s.keyDone || !b.keypad.syms.includes(i) || s.pressed.includes(i)) return false;
-    const order = keypadOrder(b);
-    if (order[s.pressed.length] === i) { s.pressed.push(i); if (s.pressed.length === 4) s.keyDone = true; } else strike(s, now, d);
+  } else if (body.m === 'lock') {
+    // ▲ ▼: bir haneyi değiştir
+    const i = Number(body.i), dd = Number(body.d) < 0 ? 9 : 1;
+    if (s.keyDone || !Number.isInteger(i) || i < 0 || i > 2) return false;
+    s.digits[i] = (s.digits[i] + dd) % 10;
+  } else if (body.m === 'open') {
+    if (s.keyDone) return false;
+    if (lockCode(b).every((v, k) => v === s.digits[k])) s.keyDone = true; else strike(s, now, d);
   } else return false;
   checkDone(s, now, d);
   return true;
 }
 
-// Herkes bitirdiyse (ya da süre dolduysa) oyun biter
+// Sıradaki takım bitirince (ya da süre dolunca) tur biter. Bot takımın sonucu önceden belli: kısa bir bekleyişle geçilir.
 export function isDue(d, now) {
-  if (now > d.roundStart + TIME_MS) return true;
-  // bot takımların süresi önceden belli; insanlar bitirince beklemeye gerek yok
-  const human = d.g.teams.filter((t) => !t.bot).flatMap((t) => t.defusers);
-  return human.length ? human.every((id) => finished(d.g.def[id])) : now > d.roundStart + Math.max(...d.g.teams.map((t) => t.botT));
+  const t = turnTeam(d);
+  if (t.bot) return now > startOf(d) + 1500;
+  if (now > endOf(d)) return true;
+  return t.defusers.every((id) => finished(d.g.def[id]));
 }
 
 export function resolve(d) {
-  return { entry: { results: results(d) }, dur: 3000 };
+  const t = turnTeam(d);
+  const out = teamResults(d, t);
+  d.g.res[t.id] = out;
+  return { entry: { team: t.id, members: t.members, results: out }, dur: 4000 };
 }
 
-// Kişi başı süre: çözen kendi süresi; anlatıcı ikili takımda ortağının süresi, üçlü takımda
-// iki dinleyici de çözdüyse en iyi süre (yüksek puan), değilse başarısız.
-function results(d) {
+// Kişi başı süre: çözen kendi süresi; anlatıcılar ortak: tüm çözenler çözdüyse en iyi süre, değilse başarısız.
+function teamResults(d, t) {
   const out = {};
-  for (const t of d.g.teams) {
-    if (t.bot) { for (const id of t.members) out[id] = t.botFail ? null : t.botT; continue; }
-    const times = t.defusers.map((id) => { const s = d.g.def[id]; return s.doneAt !== null && !s.exploded ? s.doneAt : null; });
-    t.defusers.forEach((id, i) => { out[id] = times[i]; });
-    if (t.expert) out[t.expert] = times.every((x) => x !== null) ? Math.min(...times) : times.length === 1 ? times[0] : null;
-  }
+  if (t.bot) { for (const id of t.members) out[id] = t.botFail ? null : t.botT; return out; }
+  const times = t.defusers.map((id) => { const s = d.g.def[id]; return s.doneAt !== null && !s.exploded ? s.doneAt : null; });
+  t.defusers.forEach((id, i) => { out[id] = times[i]; });
+  const shared = times.every((x) => x !== null) ? Math.min(...times) : times.length === 1 ? times[0] : null;
+  for (const id of t.members) if (!t.defusers.includes(id)) out[id] = shared;
   return out;
 }
 
 export function ranking(d, participants) {
-  const r = results(d);
+  if (d.round < d.g.teams.length) return null;
+  const r = Object.assign({}, ...Object.values(d.g.res));
   const key = (id) => (r[id] === null || r[id] === undefined ? Infinity : r[id]);
   const ids = participants.slice().sort((a, b) => key(a) - key(b));
   const groups = [];
@@ -192,14 +207,16 @@ export function ranking(d, participants) {
 export function view(d, pid, now) {
   const g = d.g;
   const team = g.teams.find((t) => t.members.includes(pid));
-  const mine = g.def[pid];
+  const turn = turnTeam(d);
+  const mine = team && team.id === turn.id ? g.def[pid] : null;
   const status = (id) => { const s = g.def[id]; return s ? { strikes: s.strikes, solved: [s.wireDone, s.btnDone, s.keyDone].filter(Boolean).length, done: s.doneAt, exploded: s.exploded } : null; };
   return {
     alive: g.alive,
-    teams: g.teams.map((t) => ({ id: t.id, members: t.members, expert: t.expert, defusers: t.defusers, bot: t.bot, status: t.defusers.map(status), botDone: t.bot && now - d.roundStart >= t.botT ? !t.botFail : null })),
+    teams: g.teams.map((t) => ({ id: t.id, members: t.members, expert: t.expert, experts: t.experts, defusers: t.defusers, bot: t.bot, status: t.defusers.map(status), botDone: t.bot && g.res[t.id] ? !t.botFail : null, finished: !!g.res[t.id] })),
+    turn: turn.id, startsAt: startOf(d),
     myTeam: team ? team.id : null,
-    role: !team ? 'izle' : team.defusers.length === 1 && !team.expert ? 'solo' : team.expert === pid ? 'anlatici' : 'cozen',
-    bomb: mine ? { ...mine.bomb, cut: mine.cut, wireDone: mine.wireDone, btnDone: mine.btnDone, keyDone: mine.keyDone, hold: mine.hold, pressed: mine.pressed, strikes: mine.strikes, done: mine.doneAt, exploded: mine.exploded } : null,
-    endsAt: d.roundStart + TIME_MS,
+    role: !team ? 'izle' : team.id !== turn.id ? 'bekle' : team.defusers.length === 1 && !team.expert ? 'solo' : team.defusers.includes(pid) ? 'cozen' : 'anlatici',
+    bomb: mine ? { ...mine.bomb, cut: mine.cut, wireDone: mine.wireDone, btnDone: mine.btnDone, keyDone: mine.keyDone, hold: mine.hold, digits: mine.digits, strikes: mine.strikes, done: mine.doneAt, exploded: mine.exploded } : null,
+    endsAt: endOf(d),
   };
 }

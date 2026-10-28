@@ -218,3 +218,9 @@ Unity: `unity/Assets/Scripts/Net/PartiApi.cs`; test `PARTI_SUNUCU=http://localho
 - iOS derleme: `Unity -batchmode -nographics -projectPath unity -executeMethod IosDerle.Calistir` → `unity/Builds/iOS` (Xcode projesi, başarılı). Kişisel takım: `J2UN2TD73C` (Xcode'da Apple ID kayıtlı, ücretsiz).
 - iPhone'a yükleme için `xcodebuild -downloadPlatform iOS` (iOS 26.5 platformu, ~8,5 GB) gerekiyor; Xcode "iOS 26.5 is not installed" diyor. Sonra: `xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -destination 'id=00008120-000A14363A13C01E' DEVELOPMENT_TEAM=J2UN2TD73C -allowProvisioningUpdates build` ve `xcrun devicectl device install app`.
 - Arayüzü ekran görüntüsüyle doğrulamadık; ilk görsel kontrol iPhone'da olacak.
+
+## Durum (2026-10-28 akşam)
+
+- macOS 15.8.1 → **macOS 26'ya güncelleniyor**: Xcode 26.6 `LSMinimumSystemVersion` 26.2 ister, 15.8.1'de arayüzü açılmaz (`open` -10825). Güncelleme sonrası: `sw_vers`, Xcode 26.6 → Settings → Accounts'a Apple ID ekle.
+- Unity iOS derlemesi başarılı (`IosDerle.Calistir`, `unity/Builds/iOS`, git'te yok). `xcodebuild ... DEVELOPMENT_TEAM=J2UN2TD73C -allowProvisioningUpdates` "requires a provisioning profile" ile düştü (Xcode 26.6'da Apple ID yok). iPhone Özgün (iPhone 14 Pro Max, iOS 26.7.1) Geliştirici Modu açık, bağlı.
+- Sonra: derleme tekrarı → `xcrun devicectl device install app`. Gerçek telefonda henüz denenmedi.

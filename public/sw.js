@@ -1,5 +1,5 @@
 // Basit service worker: önce ağ, ağ yoksa önbellek (çevrimdışı bot modu çalışsın diye).
-const CACHE = 'lazer-kafes-v60';
+const CACHE = 'lazer-kafes-v61';
 const ASSETS = ['/', '/index.html', '/style.css', '/ui.css', '/app.js', '/game-core.js', '/manifest.webmanifest',
   '/games/util.js', '/games/filtre.js', '/games/avatar.js', '/games/lazer.js', '/games/bomba.js', '/games/yaris.js',
   '/games/cizim.js', '/games/doodles.js', '/games/bilgi.js', '/games/sorular/dizi.js', '/games/sorular/bilim.js', '/games/sorular/tarih.js', '/games/sorular/insan.js', '/games/sorular/kelime.js', '/games/sorular/genel.js', '/games/sorular/spor.js', '/games/sorular/cografya.js',

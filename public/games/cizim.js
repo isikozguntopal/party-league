@@ -4,7 +4,7 @@
 // Sonunda albümler adım adım açılır (sohbet akışı gibi), çizimlere ➕/➖ puan verilir; tahminler
 // zincirin ilk cümlesine ne kadar yakınsa o kadar puan kazandırır. En sonda puan tablosu + ressamlar açıklanır.
 import { GameError, shuffle } from './util.js';
-import { DOODLES, PROMPTS, conceptFor, botGuess, drawDoodle, artDuration, replayMs } from './doodles.js';
+import { DOODLES, PROMPTS, conceptFor, botGuess, drawDoodle, artDuration, replayMs, withStrokes } from './doodles.js';
 
 export const KIND = 'cizim';
 export const TITLE = 'Kulaktan Kulağa';
@@ -214,21 +214,21 @@ export function view(d, pid) {
   if (g.phase === 'game') {
     const i = g.order.indexOf(pid), k = stepOf(d);
     const prev = i >= 0 && k > 0 ? g.chains[chainOf(g, i, k)][k - 1] : null;
-    return { ...base, task: prev ? { type: prev.type, text: prev.text, art: prev.art } : null };
+    return { ...base, task: prev ? { type: prev.type, text: prev.text, art: withStrokes(prev.art) } : null };
   }
   const owners = g.chains.map((ch) => ch[0] && ch[0].by);
   if (g.phase === 'final') {
     const t = totals(d);
     const board = Object.keys(t).map((id) => ({ id, ...t[id] })).sort((a, b) => b.total - a.total || b.votes - a.votes);
     const gallery = [];
-    g.album.forEach((it, n) => { const e = g.chains[it.c][it.k]; if (e.type === 'draw') gallery.push({ n, c: it.c, k: it.k, by: e.by, art: e.art, prompt: (g.chains[it.c][it.k - 1] || {}).text || '', score: voteSum(g, n) }); });
+    g.album.forEach((it, n) => { const e = g.chains[it.c][it.k]; if (e.type === 'draw') gallery.push({ n, c: it.c, k: it.k, by: e.by, art: withStrokes(e.art), prompt: (g.chains[it.c][it.k - 1] || {}).text || '', score: voteSum(g, n) }); });
     return { ...base, ai: g.ai, total: g.album.length, board, gallery, owners };
   }
   // albüm: 'by' çizimlerde de gönderilir (istemci gizler; "kendi çizimin" uyarısı için gerekli)
   const shown = g.album.slice(0, Math.min(g.album.length, g.ai + 1)).map((it, n) => {
     const e = g.chains[it.c][it.k];
     const votes = g.votes[n] || {};
-    const out = { n, c: it.c, k: it.k, type: e.type, by: e.by, text: e.text, art: e.art, dur: it.dur, score: voteSum(g, n), plus: Object.values(votes).filter((v) => v > 0).length, minus: Object.values(votes).filter((v) => v < 0).length, myVote: votes[pid] || 0 };
+    const out = { n, c: it.c, k: it.k, type: e.type, by: e.by, text: e.text, art: withStrokes(e.art), dur: it.dur, score: voteSum(g, n), plus: Object.values(votes).filter((v) => v > 0).length, minus: Object.values(votes).filter((v) => v < 0).length, myVote: votes[pid] || 0 };
     if (e.type === 'text' && it.k > 0) { out.sim = e.sim || 0; out.pts = e.pts || 0; if (e.self) out.self = true; }
     return out;
   });

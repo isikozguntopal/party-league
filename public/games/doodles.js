@@ -86,6 +86,8 @@ export function withTiming(strokes) {
     return out;
   });
 }
+// Bot çizimine fırça darbelerini ekler (Unity istemcisi çizimi üretemez; yalnızca görünüme eklenir, odaya yazılmaz)
+export const withStrokes = (a) => (a && a.doodle && !a.strokes ? { ...a, strokes: drawDoodle(a.doodle, a.seed) } : a);
 export const artDuration = (strokes) => (strokes && strokes.length ? Math.max(...withTiming(strokes).map((s) => s.t[1])) : 0);
 // Albümde tekrar oynatma süresi: kısa çizimler 2x, uzunlar 3x (en fazla 7 sn)
 export const replayMs = (dur) => Math.max(Math.min((dur || 0) / 2, 2500), Math.min(7000, (dur || 0) / 3), 600);

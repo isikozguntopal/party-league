@@ -5,7 +5,7 @@
 // Çizim canlı olarak ayrı bir kayıtta tutulur (game-core: "live"); oda verisi şişmez.
 import { GameError, shuffle } from './util.js';
 import { WORDS } from './kelimeler.js';
-import { DOODLES } from './doodles.js';
+import { DOODLES, withStrokes } from './doodles.js';
 
 export const KIND = 'neciz';
 export const TITLE = 'Ne Çizdim?';
@@ -228,7 +228,7 @@ export function view(d, pid, now) {
     drawStart: pi ? pi.at : null, drawEnd: pi ? pi.at + DRAW_MS : null,
     word: isDrawer || iHit ? word : null,
     mask: word && !isDrawer && !iHit ? maskOf(word, t.hints[pi.idx], now - pi.at) : null,
-    doodle: bot && pi ? { doodle: word, seed: t.seed, at: pi.at } : null,
+    doodle: bot && pi ? withStrokes({ doodle: word, seed: t.seed, at: pi.at }) : null,
     hits: hits.map((h) => h.p), scores: g.scores, feed, myHit: iHit,
   };
 }

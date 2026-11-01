@@ -33,6 +33,12 @@ namespace PartiLigi.Oyunlar.Basket
         readonly System.Random _r = new System.Random();
         string _tabloAnahtar;
         Faz _faz;
+        // file: ipler her karede üst (çember) ve alt (sallanan halka) noktaları arasına yeniden yerleşir
+        readonly List<Transform> _ipler = new List<Transform>();
+        Vector2 _fileSal; Vector2 _fileHiz;                  // alt halkanın (x, aşağı esneme) yay ile salınımı
+        // atış: ekranın herhangi bir yerinden çek-bırak; yön/güç ilk dokunuşa göre, hassasiyet ×2
+        const float Hassas = 2f;
+        Vector2 _cekBas;
 
         public override string Baslik => "Pota Atışı";
         public override float ZeminSaydam => 0f;
@@ -44,7 +50,12 @@ namespace PartiLigi.Oyunlar.Basket
             var dok = Ui.Rect("Dokunma", B.alan); Ui.Doldur(dok);
             dok.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0.001f);
             var alan = dok.gameObject.AddComponent<SurukleAlan>();
-            alan.ekranda = p => { if (_faz == Faz.Oyun && !_b.live && Duzlem(p, out var w)) { _cekiyor = true; _parmak = w; } };
+            alan.ekranda = p =>
+            {
+                if (_faz != Faz.Oyun || !TopHazir || !Duzlem(p, out var w)) return;
+                if (!_cekiyor) { _cekiyor = true; _cekBas = w; }
+                _parmak = w;
+            };
             alan.birakildi = Birak;
 
             var ic = Ui.Dikey(B.alan, "Icerik", 16, 40); Ui.Doldur(ic);
@@ -91,14 +102,7 @@ namespace PartiLigi.Oyunlar.Basket
                 c.transform.localRotation = Quaternion.FromToRotation(Vector3.up, p1 - p0);
             }
             var file = _s.Malzeme(new Color(1, 1, 1, 1), 0.2f);
-            for (int i = 0; i < 12; i++)
-            {
-                float a = i * Mathf.PI * 2 / 12;
-                var ust = new Vector3(Mathf.Cos(a) * F.RimHalf * 0.95f, -0.03f, Mathf.Sin(a) * F.RimHalf * 0.95f);
-                var alt = new Vector3(Mathf.Cos(a + 0.4f) * 0.42f, -0.85f, Mathf.Sin(a + 0.4f) * 0.42f);
-                var ip = _s.Kutu(PrimitiveType.Cylinder, "File", (ust + alt) / 2, new Vector3(0.025f, (alt - ust).magnitude / 2, 0.025f), file, _pota);
-                ip.transform.localRotation = Quaternion.FromToRotation(Vector3.up, alt - ust);
-            }
+            for (int i = 0; i < 24; i++) _ipler.Add(_s.Kutu(PrimitiveType.Cylinder, "File", Vector3.zero, Vector3.one, file, _pota).transform);
             float bx = F.RimHalf + F.BoardGap + 0.05f;
             _s.Kutu(PrimitiveType.Cube, "Panya", new Vector3(bx, 0.82f, 0), new Vector3(0.1f, 2.35f, 1.9f), _s.Malzeme(new Color(0.95f, 0.97f, 1f), 0.8f), _pota);
             var kirmizi = _s.Malzeme(new Color(0.9f, 0.15f, 0.2f), 0.4f);
@@ -191,6 +195,7 @@ namespace PartiLigi.Oyunlar.Basket
             {
                 if (e == "score") { bool temiz = !_b.touched; int p = F.AwardMake(_skor, temiz); Uyari((temiz ? "Temiz! " : "") + "+" + p + (_skor.streak >= 2 ? $"  ×{F.Multiplier(_skor.streak)}" : "")); }
                 if (e == "miss") F.AwardMiss(_skor);
+                if (e == "rim" || e == "board") _fileHiz += new Vector2(Random.Range(-0.8f, 0.8f), 0.6f);
             }
             if (!_b.live) { _yeniTop = 0.45f; YeniTop(); }
         }
@@ -201,7 +206,7 @@ namespace PartiLigi.Oyunlar.Basket
         {
             if (!_cekiyor || _faz != Faz.Oyun || !TopHazir) { _cekiyor = false; return; }
             _cekiyor = false;
-            var v = F.LaunchVel(_parmak.x - _cikis.x, _parmak.y - _cikis.y);
+            var v = Cekis();
             if (v == null) return;
             Firlat(v.Value.vx, v.Value.vy);
         }
@@ -232,7 +237,8 @@ namespace PartiLigi.Oyunlar.Basket
             _kasa.localScale = new Vector3(1.1f, kasaY, 1.1f); _kasa.localPosition = new Vector3(_cikis.x - 0.45f, kasaY / 2, 0.15f);
             if (_karakter != null) _karakter.localPosition = new Vector3(_cikis.x - 0.45f, kasaY, 0.15f);
 
-            var v = _cekiyor ? F.LaunchVel(_parmak.x - _cikis.x, _parmak.y - _cikis.y) : null;
+            var v = _cekiyor ? Cekis() : null;
+            FileCiz(bx, by);
             for (int i = 0; i < _nokta.Count; i++)
             {
                 bool gor = v != null; _nokta[i].gameObject.SetActive(gor);
@@ -240,6 +246,43 @@ namespace PartiLigi.Oyunlar.Basket
                 float tt = (i + 1) * 0.05f;
                 _nokta[i].localPosition = new Vector3(_cikis.x + v.Value.vx * tt, _cikis.y + v.Value.vy * tt - 0.5f * F.G * tt * tt, 0);
             }
+        }
+
+        // çekiş = (parmak − ilk dokunuş) × hassasiyet; top çekişin tersine fırlar
+        (float vx, float vy)? Cekis() => F.LaunchVel((_parmak.x - _cekBas.x) * Hassas, (_parmak.y - _cekBas.y) * Hassas);
+
+        // File: 12 dikey + 12 çapraz ip; alt halka yayla salınır. Top çemberin içinden geçerken alt halkayı aşağı/yana iter,
+        // çembere/panyaya çarpınca da hafifçe sallanır.
+        void FileCiz(float topX, float topY)
+        {
+            var h = _pota.localPosition; float dt = Mathf.Min(Time.deltaTime, 0.05f);
+            float dx = topX - h.x, dy = h.y - topY;                   // dy > 0: top çemberin altında
+            if (_b.live && Mathf.Abs(dx) < F.RimHalf && dy > -0.2f && dy < 1.1f)
+            {
+                // top filenin içinde: alt halka topu izler ve aşağı esner
+                _fileHiz.x += (dx * 0.6f - _fileSal.x) * 40f * dt;
+                _fileHiz.y += (0.45f - _fileSal.y) * 40f * dt + Mathf.Max(0, -_b.vy) * 0.08f;
+            }
+            _fileHiz -= _fileSal * 60f * dt;                            // yay
+            _fileHiz *= Mathf.Exp(-5f * dt);                            // sönüm
+            _fileSal += _fileHiz * dt;
+            _fileSal.y = Mathf.Clamp(_fileSal.y, -0.15f, 0.7f); _fileSal.x = Mathf.Clamp(_fileSal.x, -0.4f, 0.4f);
+            float altY = -0.85f - _fileSal.y, altR = 0.42f - _fileSal.y * 0.15f;
+            for (int i = 0; i < 12; i++)
+            {
+                float a = i * Mathf.PI * 2 / 12;
+                var ust = new Vector3(Mathf.Cos(a) * F.RimHalf * 0.95f, -0.03f, Mathf.Sin(a) * F.RimHalf * 0.95f);
+                var alt = new Vector3(Mathf.Cos(a) * altR + _fileSal.x, altY, Mathf.Sin(a) * altR);
+                var capraz = new Vector3(Mathf.Cos(a + 0.52f) * altR + _fileSal.x, altY, Mathf.Sin(a + 0.52f) * altR);
+                Ip(_ipler[i * 2], ust, alt); Ip(_ipler[i * 2 + 1], ust, capraz);
+            }
+        }
+
+        static void Ip(Transform ip, Vector3 a, Vector3 b)
+        {
+            var d = b - a;
+            ip.localPosition = (a + b) / 2; ip.localScale = new Vector3(0.022f, d.magnitude / 2, 0.022f);
+            ip.localRotation = Quaternion.FromToRotation(Vector3.up, d);
         }
 
         void Uyari(string m) { _uyari.text = m; _uyariBitis = Time.time + 1f; }
@@ -267,9 +310,10 @@ namespace PartiLigi.Oyunlar.Basket
         {
             if (!B.otomatik || !TopHazir || Time.time < _oto) return;
             _oto = Time.time + 1.1f;
-            var h = F.HoopAt(t + 0.55f);
-            float vt = 0.55f, vx = (h.x - _cikis.x) / vt, vy = (h.y + 0.6f - _cikis.y) / vt + 0.5f * F.G * vt;
-            Firlat(vx * Random.Range(0.95f, 1.04f), vy);
+            // ~0,9 sn sonra potanın olacağı yerin biraz üstüne, inerken varacak şekilde
+            const float vt = 0.9f; var h = F.HoopAt(t + vt);
+            float vx = (h.x - _cikis.x) / vt, vy = (h.y + 0.15f - _cikis.y + 0.5f * F.G * vt * vt) / vt;
+            Firlat(vx * Random.Range(0.97f, 1.03f), vy);
         }
     }
 }

@@ -158,6 +158,7 @@ namespace PartiLigi.UI
         {
             foreach (Transform c in _ekran) Destroy(c.gameObject);
             _ekranAdi = ad;
+            if (ad != "lobi") _seciciAcik = false;
             EtiketleriTemizle();
             if (ad != "lobi" && _sahne != null) _sahne.LobiModu(false);
             if (_oyun != null) { _oyun.Kapat(); _oyun = null; _oyunAnahtar = null; }
@@ -325,6 +326,7 @@ namespace PartiLigi.UI
             var idler = new List<string>();
             foreach (var p in oyuncular) idler.Add((string)p["id"]);
             if (_sahne != null) { _sahne.LobiModu(true); _sahne.Oyuncular(idler); }
+            if (_seciciAcik && BenHost) OyunSecici();
             foreach (var p in oyuncular) _etiketler[(string)p["id"]] = Etiket(p, hostId);
             if (_oyun != null) OyunKare();
             EtiketleriYerlestir();
@@ -332,8 +334,11 @@ namespace PartiLigi.UI
 
         // Turnuva yalnızca Unity'de oynanabilen oyunlarla (OyunKayit) başlatılır; tek oyun varsa doğrudan o
         // Oyun seçici: Turnuva + Unity'de oynanabilen her oyun; seçince odanın modu değişir (herkes görür)
+        bool _seciciAcik;   // lobi her durumda yeniden kurulur; seçici açıksa yeniden açılır (yoksa kendi kendine kapanıyordu)
+
         void OyunSecici()
         {
+            _seciciAcik = true;
             var panel = Ui.Rect("OyunSecici", _ekran); Ui.Doldur(panel, 50, 200, 50, 220);
             Ui.Kart(panel.gameObject, new Color(0.08f, 0.06f, 0.22f, 0.95f), 0.6f);
             var ic = Ui.Dikey(panel, "Icerik", 16, 44); Ui.Doldur(ic);
@@ -341,7 +346,7 @@ namespace PartiLigi.UI
             var mod = (string)_durum["mode"] ?? "tour";
             void Sec(string kind) => Calistir(async () =>
             {
-                Destroy(panel.gameObject);
+                _seciciAcik = false; Destroy(panel.gameObject);
                 var r = await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = kind });
                 _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz();
             });
@@ -360,7 +365,7 @@ namespace PartiLigi.UI
             }
             var bos = Ui.Rect("Bosluk", ic); Ui.Yukseklik(bos, 0); bos.GetComponent<LayoutElement>().flexibleHeight = 1;
             var kapat = Ui.Dugme(ic, "Kapat", "menu_gri", 46); Ui.Yukseklik(kapat, 130);
-            kapat.onClick.AddListener(() => Destroy(panel.gameObject));
+            kapat.onClick.AddListener(() => { _seciciAcik = false; Destroy(panel.gameObject); });
         }
 
         async Task Baslat()

@@ -16,6 +16,7 @@ namespace PartiLigi.Oyunlar
         public JObject durum;                         // son oda durumu (Uygulama günceller)
         public Action<string, JObject> gonder;        // eylem gönder (act / gact …); hata olursa toast
         public Action<string> toast;
+        public Func<string, JObject, System.Threading.Tasks.Task<JObject>> cagir;   // yanıtı gereken çağrı (ör. çizim kaydı "art")
         public bool otomatik;                         // önizleme: oyun kendiliğinden oynasın
 
         public double Simdi => PartiApi.SunucuSimdi;
@@ -101,6 +102,8 @@ namespace PartiLigi.Oyunlar
             ("tanir", "Ne Kadar Tanıyorsun?", () => new Tanir.TanirEkrani()),
             ("basket", "Pota Atışı", () => new Basket.BasketEkrani()),
             ("bombaci", "Bombayı Çöz", () => new Bombaci.BombaciEkrani()),
+            ("cizim", "Kulaktan Kulağa", () => new Cizim.CizimEkrani()),
+            ("neciz", "Ne Çizdim?", () => new Neciz.NecizEkrani()),
             ("saniye", "Kayıp Saniye", () => new Saniye.SaniyeEkrani()),
             ("suru", "Sürü", () => new Suru.SuruEkrani()),
             ("ayar", "Ayar", () => new Ayar.AyarEkrani()),

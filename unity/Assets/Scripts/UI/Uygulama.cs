@@ -431,6 +431,7 @@ namespace PartiLigi.UI
             _oyun.B = new OyunBaglami
             {
                 alan = alan, durum = _durum, otomatik = _otomatikHamle, toast = Toast,
+                cagir = (action, govde) => PartiApi.Eylem(_kod, action, govde),
                 gonder = (action, govde) => Calistir(async () => { var r = await PartiApi.Eylem(_kod, action, govde); _durum = (JObject)r["state"]; Ciz(); }),
             };
             var z = Ui.Lacivert; z.a = _sahne == null ? 1f : _oyun.ZeminSaydam; _zemin.color = z;

@@ -21,3 +21,6 @@ unity/*.csproj
 unity/*.sln
 .wrangler/
 .env*
+
+# Claude Ekip önizleme görüntüleri
+.ekip-onizleme/

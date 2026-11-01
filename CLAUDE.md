@@ -224,3 +224,29 @@ Unity: `unity/Assets/Scripts/Net/PartiApi.cs`; test `PARTI_SUNUCU=http://localho
 - macOS 15.8.1 → **macOS 26'ya güncelleniyor**: Xcode 26.6 `LSMinimumSystemVersion` 26.2 ister, 15.8.1'de arayüzü açılmaz (`open` -10825). Güncelleme sonrası: `sw_vers`, Xcode 26.6 → Settings → Accounts'a Apple ID ekle.
 - Unity iOS derlemesi başarılı (`IosDerle.Calistir`, `unity/Builds/iOS`, git'te yok). `xcodebuild ... DEVELOPMENT_TEAM=J2UN2TD73C -allowProvisioningUpdates` "requires a provisioning profile" ile düştü (Xcode 26.6'da Apple ID yok). iPhone Özgün (iPhone 14 Pro Max, iOS 26.7.1) Geliştirici Modu açık, bağlı.
 - Sonra: derleme tekrarı → `xcrun devicectl device install app`. Gerçek telefonda henüz denenmedi.
+
+## Unity ana menü (2026-10-30, editörde görüntüyle doğrulandı, gerçek telefonda DENENMEDİ)
+
+- Arkada 3D parti sahnesi (`SahneKur.Olustur`): perde, kürsü (altın/gümüş/bronz) + Kenney karakterleri (Legacy animasyon), ampullü kemer, spot huzmeleri, balonlar, konfeti; canlandırma `Scripts/Menu/MenuSahnesi.cs`. Arayüz `UIKamera` (URP overlay) üstünde; menü dışı ekranlarda koyu perde.
+- Başlık fontu **DynaPuff Bold** (Türkçe tam); hap düğmeler `menu_pembe/mavi/sari/gri` (`scripts/menu-gorselleri.py` üretir).
+- URP artık gerçekten atanmış: `Assets/Ayarlar/URP-Mobil.asset` (`GorselAyar.Uygula`; önce hiç URP asset'i yoktu). Sıra: `GorselAyar.Uygula` → `SahneKur.Olustur` → (iOS) `IosDerle.Calistir`.
+- Tuzak: `SahneKur` `-nographics` ile çalıştırılmaz (malzeme anahtar kelimeleri kaydedilmez). Önizleme: `Unity -batchmode -projectPath unity -executeMethod MenuGoruntu.Cek -cikti /mutlak/yol.png [-ekran katil|lobi]` (lobi örnek veriyle, sunucusuz).
+- Katıl ve lobi ekranları da aynı stilde (hap düğmeler, `Ui.Kart` yuvarlak kartlar). Unity `Text` emoji çizemez → lobide ⭐/🤖 yerine "Oda sahibi"/"Bot" etiketi.
+- Telefona yükleme betiği: Unity `IosDerle.Calistir` → Xcode 27.1 (`DEVELOPER_DIR=/Applications/Xcode-27.1.0.app/...`) `xcodebuild ... -derivedDataPath /tmp/pl-dd DEVELOPMENT_TEAM=J2UN2TD73C -allowProvisioningUpdates build` → `xcrun devicectl device install app`.
+
+## Unity: lobi + Sapan Arenası (2026-10-31, editörde yerel sunucuyla uçtan uca denendi, gerçek telefonda DENENMEDİ)
+
+- **Lobi 3D**: lobide kürsüler gizlenir, her oyuncu sahnede kendi Kenney karakteriyle durur (kimlikten FNV özetiyle sabit seçim, `MenuSahnesi.Oyuncular`); 5'ten fazlası arka basamakta. İsim etiketleri `IEtiketKaynagi` (lobi: ön sıra ayak altı, arka sıra baş üstü). Bot silme etiketteki X.
+- **Sapan Arenası** (`Scripts/Oyunlar/Sapan/`): `SapanKural.cs` = `games/lazer.js` kopyası (yalnızca istemcinin gerektirdiği: sınır, nişan, açılış zaman planı). Eşitlik testi: `node scripts/sapan-fixture.mjs /tmp/sapan-fixture.json` → `Unity -batchmode -nographics -quit -projectPath unity -executeMethod SapanTesti.Calistir -fixture /tmp/sapan-fixture.json` (2430 karşılaştırma, 0 hata). JS kuralı değişirse bu test tekrar çalıştırılmalı.
+  `SapanOynatici.cs` açılışı zamanın fonksiyonu olarak çözer (durumsuz), `SapanOyunu.cs` 3D sahne (gökte sekizgen ada, `SahneKur.SapanKur`), dokunma: karakterin yakınından sürükle = yürü, başka yere dokun = nişan + menzil. Zaman sunucu saatine göre (`PartiApi.SunucuFarki`, yanıttaki `now`).
+- Lobide **Başlat** şimdilik odayı `mode: lazer` yapıp başlatır (Unity'de başka oyun yok). Oyun sonu paneli: sıralama + puan, Tekrar oyna (`rematch`) / Lobiye dön (`lobby`, oda sahibi).
+- Uçtan uca önizleme: `npm run dev` (8888) + `PARTI_SUNUCU=http://localhost:8888 Unity -batchmode -projectPath unity -executeMethod MenuGoruntu.Cek -cikti /yol.png -ekran sapan -sure <sn>` (oda kurar, 3 bot, kendiliğinden hazır der).
+- Telefona yükleme: `bash scripts/ios-yukle.sh` (Unity derleme + Xcode 27.1 imza + yükleme; `--unitysiz` ile yalnızca Xcode).
+
+## Unity oyunları (2026-10-31, editörde yerel sunucuyla uçtan uca denendi, gerçek telefonda DENENMEDİ)
+
+- Ortak yapı `Scripts/Oyunlar/OyunEkrani.cs`: `OyunBaglami` (durum, sunucu saati, `Gonder(action, gövde)` seq/round ekler, oyuncu adı/rengi, `Son`/`AcilisSuruyor`), `OyunEkrani` (Kur/Durum/Kare/Kapat, `SonucGosterilebilir`), `OyunKayit` (Unity'de oynanabilen oyunlar), `OyunUi` (üst şerit, şık düğmesi, oyuncu satırı). `Uygulama` oyunu kind/seq başına açar, ortak sonuç panelini ve takım oyunlarının "Takımlar" kapısını (gate → `teamReady`) gösterir.
+- Lobide Başlat: `OyunKayit` birden çoksa turnuva (`mode: tour` + `tourGames` = Unity'de olanlar).
+- Hazır: Sapan Arenası, Bil Bakalım, Keski Düellosu (3D küp, kameraya bağlı), Ne Kadar Tanıyorsun?, Pota Atışı (fizik `BasketFizik.cs` = basket.js kopyası), Kayıp Saniye, Sürü, Ayar (`SurukleAlan` gösterge), Telve (kart resimleri `Resources/Telve`).
+- Kalan tur tabanlı: Kulaktan Kulağa, Ne Çizdim?, Bombayı Çöz, Ortak Şarkı, Şarkıyı Tahmin Et. Gerçek zamanlı (Bomba Ustası, Kör Koşu, Halat, Kayık, Pist Canavarı, Pati) C# simülasyon + ağ katmanı ister.
+- Önizleme: `-ekran oyun:<kind>` (tek oyun) ya da `-ekran oyun:suru,ayar` (turnuva); yerel sunucu `npm run dev` + `PARTI_SUNUCU=http://localhost:8888`. Unity `Text` emoji çizemez; DynaPuff'ta ✓ ✗ ‹ … “ ” var, ↔ yok.

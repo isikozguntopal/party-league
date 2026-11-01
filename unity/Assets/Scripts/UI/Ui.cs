@@ -26,13 +26,16 @@ namespace PartiLigi.UI
                 return _govde;
             }
         }
-        public static Font Baslik => _baslik != null ? _baslik : (_baslik = Resources.Load<Font>("UI/KenneyFuture"));
+        // DynaPuff Bold (OFL): Türkçe harflerin tamamını içerir
+        public static Font Baslik => _baslik != null ? _baslik : (_baslik = Resources.Load<Font>("UI/DynaPuff-Bold"));
 
-        public static Sprite Btn(string renk) => Resources.Load<Sprite>("UI/btn_" + renk);
+        // "menu_pembe" gibi adlar hap düğmeleri (Resources/UI/menu_*.png), diğerleri Kenney düğmeleri
+        public static Sprite Btn(string renk) => Resources.Load<Sprite>(renk.StartsWith("menu_") ? "UI/" + renk : "UI/btn_" + renk);
 
         public static RectTransform Rect(string ad, Transform ebeveyn)
         {
             var go = new GameObject(ad, typeof(RectTransform));
+            go.layer = ebeveyn.gameObject.layer; // arayüz kamerası yalnızca UI katmanını çizer
             var rt = (RectTransform)go.transform;
             rt.SetParent(ebeveyn, false);
             return rt;
@@ -66,19 +69,36 @@ namespace PartiLigi.UI
         {
             var rt = Rect("Dugme_" + metin, ebeveyn);
             var im = rt.gameObject.AddComponent<Image>();
-            im.sprite = Btn(renk); im.type = Image.Type.Sliced; im.pixelsPerUnitMultiplier = 0.35f;
+            var hap = renk.StartsWith("menu_");
+            im.sprite = Btn(renk); im.type = Image.Type.Sliced; im.pixelsPerUnitMultiplier = hap ? 1.18f : 0.35f;
             var b = rt.gameObject.AddComponent<Button>(); b.targetGraphic = im;
             var cs = b.colors; cs.pressedColor = new Color(0.8f, 0.8f, 0.8f); b.colors = cs;
-            var y = Yazi(rt, metin, boyut, Beyaz); Doldur(y.rectTransform);
+            var y = Yazi(rt, metin, boyut, Beyaz, TextAnchor.MiddleCenter, hap);
+            if (hap) { Doldur(y.rectTransform, 0, 22, 0, 0); Golge(y, 4); } else Doldur(y.rectTransform);
             var le = rt.gameObject.AddComponent<LayoutElement>(); le.preferredHeight = 170; le.minHeight = 170;
             return b;
+        }
+
+        // Yuvarlak köşeli yarı saydam kart (giriş kutusu, oyuncu satırı, rozet)
+        // carpan: 9 dilim kenarları (dikeyde toplam 200 px) kutu yüksekliğinden küçük kalsın diye ≥ 200 / yükseklik
+        public static Image Kart(GameObject go, Color renk, float carpan = 1.6f)
+        {
+            var im = go.AddComponent<Image>();
+            im.sprite = Btn("menu_girdi"); im.type = Image.Type.Sliced; im.pixelsPerUnitMultiplier = carpan; im.color = renk;
+            return im;
+        }
+
+        public static void Golge(Graphic g, float mesafe, float saydam = 0.45f)
+        {
+            var s = g.gameObject.AddComponent<Shadow>();
+            s.effectColor = new Color(0.05f, 0.03f, 0.15f, saydam); s.effectDistance = new Vector2(0, -mesafe);
         }
 
         public static InputField Girdi(Transform ebeveyn, string ipucu, int sinir, int boyut = 52)
         {
             var rt = Rect("Girdi_" + ipucu, ebeveyn);
-            var im = rt.gameObject.AddComponent<Image>(); im.color = new Color(1, 1, 1, 0.12f);
-            var le = rt.gameObject.AddComponent<LayoutElement>(); le.preferredHeight = 150; le.minHeight = 150;
+            var im = Kart(rt.gameObject, new Color(0.08f, 0.06f, 0.22f, 0.7f));
+            var le = rt.gameObject.AddComponent<LayoutElement>(); le.preferredHeight = 140; le.minHeight = 140;
             var ip = Yazi(rt, ipucu, boyut, Soluk, TextAnchor.MiddleCenter, false, "Ipucu"); Doldur(ip.rectTransform, 20, 0, 20, 0);
             var tx = Yazi(rt, "", boyut, Beyaz, TextAnchor.MiddleCenter, false, "Metin"); Doldur(tx.rectTransform, 20, 0, 20, 0);
             tx.supportRichText = false;
@@ -96,9 +116,20 @@ namespace PartiLigi.UI
             return rt;
         }
 
+        public static RectTransform Yatay(Transform ebeveyn, string ad, float aralik)
+        {
+            var rt = Rect(ad, ebeveyn);
+            var h = rt.gameObject.AddComponent<HorizontalLayoutGroup>();
+            h.spacing = aralik; h.childAlignment = TextAnchor.MiddleCenter;
+            h.childControlWidth = true; h.childControlHeight = true; h.childForceExpandWidth = true; h.childForceExpandHeight = false; // true olsa grup esnek yükseklik kapar
+            return rt;
+        }
+
         public static void Yukseklik(Component c, float h)
         {
-            var le = c.GetComponent<LayoutElement>() ?? c.gameObject.AddComponent<LayoutElement>();
+            // ?? kullanılmaz: editörde GetComponent eksik bileşen için "sahte null" döndürür
+            var le = c.GetComponent<LayoutElement>();
+            if (le == null) le = c.gameObject.AddComponent<LayoutElement>();
             le.preferredHeight = h; le.minHeight = h;
         }
     }

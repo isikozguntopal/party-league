@@ -63,8 +63,14 @@ namespace PartiLigi.Net
                 throw new ApiHata(yanit["error"].ToString(), istek.responseCode);
             if (istek.result != UnityWebRequest.Result.Success || yanit == null)
                 throw new ApiHata("Bağlantı kurulamadı", istek.responseCode);
+            if (yanit["now"] != null) SunucuFarki = (double)yanit["now"] - YerelMs;
             return yanit;
         }
+
+        /// <summary>Sunucu saati − cihaz saati (ms). Her yanıttaki "now" ile güncellenir; tur zamanlamaları sunucu saatine göredir.</summary>
+        public static double SunucuFarki;
+        public static double YerelMs => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        public static double SunucuSimdi => YerelMs + SunucuFarki;
 
         public static Task<JObject> Cagir(string action, object ek = null)
         {

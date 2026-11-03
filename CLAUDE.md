@@ -251,3 +251,10 @@ Unity: `unity/Assets/Scripts/Net/PartiApi.cs`; test `PARTI_SUNUCU=http://localho
 - Ayrıca hazır: Bombayı Çöz, Kulaktan Kulağa, Ne Çizdim? (ortak `Cizim/CizimTuvali.cs`: PWA ile aynı çizgi biçimi, 512² işlemci raster, artımlı tekrar oynatma; canlı çizim `live` + `state {live}`). Sunucu bot çizimlerine `strokes` ekler (`doodles.js withStrokes`, yalnız görünümde; Cloudflare'a yayınlandı, sw v61). Pota Atışı 3D (`Oyunlar/Sahne3D.cs` kamera/ışık devralma), pota hareketi Unity'de yumuşatıldı (PWA'da 18. sn sıçraması hâlâ var).
 - Kalan tur tabanlı: Şarkıyı Tahmin Et. **Ortak Şarkı (`sarki`) kullanıcı kararıyla şimdilik Unity'ye taşınmıyor (2026-11-01)**; PWA'da ve sunucu turnuva listesinde (`TOUR`) duruyor. Gerçek zamanlı (Bomba Ustası, Kör Koşu, Halat, Kayık, Pist Canavarı, Pati) C# simülasyon + ağ katmanı ister.
 - Önizleme: `-ekran oyun:<kind>` (tek oyun) ya da `-ekran oyun:suru,ayar` (turnuva); yerel sunucu `npm run dev` + `PARTI_SUNUCU=http://localhost:8888`. Unity `Text` emoji çizemez; DynaPuff'ta ✓ ✗ ‹ … “ ” var, ↔ yok.
+
+## Unity gerçek zamanlı oyunlar (2026-11-03, editörde tek cihazla denendi, iki telefonla DENENMEDİ)
+
+- Çerçeve `Scripts/Oyunlar/GercekZamanli.cs` (`ISim` + `GercekZamanliEkran`): rt.js'in **sunucu aktarımı** yolu (WebRTC yok). Oda sahibi (`g.simHost`) 30 Hz sabit adım, ~7 Hz `rtSnap` + `state {rt:{inputs}}`, 3 sn'de `rtProgress`, bitince `rtResult`. İzleyen `rtInput` (~8 Hz) + `state {rt:{snap,have}}`, 0,45 sn gecikmeyle sim zamanına göre ara değerleme. Görüntü biçimi JS `snapshot()` ile aynı → PWA ile karışık oda mümkün (denenmedi). 16 sn kumanda göndermeyen bot olur.
+- Hazır: **Halat Çekme** (`Halat/HalatSim.cs` = halat.js kopyası). Kalan: Bomba Ustası, Kör Koşu, Kayık Kafilesi, Pist Canavarı, Pati Koşusu.
+- Şarkıyı Tahmin Et: ses iOS eklentisiyle (`Plugins/iOS/MelodiSes.mm`, AVAudioPlayer; Unity m4a/AAC çözemiyor), editörde ses yok. Havuz `node scripts/melodi-unity.mjs` → `Resources/Melodi/sarkilar.json`.
+- İkinci telefon: "Yağmur" (UDID 00008120-0019544A012B601E) yüklendi; `scripts/ios-yukle.sh` bağlı tüm iPhone'lara yükler.

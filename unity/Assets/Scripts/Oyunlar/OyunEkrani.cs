@@ -104,6 +104,7 @@ namespace PartiLigi.Oyunlar
             ("bombaci", "Bombayı Çöz", () => new Bombaci.BombaciEkrani()),
             ("cizim", "Kulaktan Kulağa", () => new Cizim.CizimEkrani()),
             ("neciz", "Ne Çizdim?", () => new Neciz.NecizEkrani()),
+            ("melodi", "Şarkıyı Tahmin Et", () => new Melodi.MelodiEkrani()),
             ("saniye", "Kayıp Saniye", () => new Saniye.SaniyeEkrani()),
             ("suru", "Sürü", () => new Suru.SuruEkrani()),
             ("ayar", "Ayar", () => new Ayar.AyarEkrani()),

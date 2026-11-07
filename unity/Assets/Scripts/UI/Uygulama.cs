@@ -67,7 +67,7 @@ namespace PartiLigi.UI
             // Telefonsuz görsel kontrol (MenuGoruntu -ekran katil|lobi): sunucuya gitmeden ekranı aç
             var onizleme = Environment.GetEnvironmentVariable("PARTI_ONIZLEME");
             if (onizleme == "katil") { KatilEkrani(); return; }
-            if (onizleme == "lobi" || onizleme == "lobi-secici") { _durum = OrnekLobi(); _kod = (string)_durum["code"]; Ciz(); if (onizleme == "lobi-secici") OyunSecici(); return; }
+            if (onizleme == "lobi" || onizleme == "lobi-secici") { _durum = OrnekLobi(); _kod = (string)_durum["code"]; Ciz(); if (onizleme == "lobi-secici") { int.TryParse(Environment.GetEnvironmentVariable("PARTI_KATALOG_SAYFA") ?? "-1", out _katalogSayfa); OyunSecici(); } return; }
             if (onizleme == "sapan" || (onizleme ?? "").StartsWith("oyun:"))
             {
                 // gerçek (yerel) sunucuyla uçtan uca: oda kur → 3 bot → oyun → kendiliğinden oyna
@@ -303,7 +303,11 @@ namespace PartiLigi.UI
                 var sec = Ui.Dugme(ic, "Oyun: " + modAd + "  ›", "menu_sari", 46); Ui.Yukseklik(sec, 130);
                 sec.onClick.AddListener(OyunSecici);
             }
-            else { var m = Ui.Yazi(ic, "Oyun: " + modAd, 44, new Color32(0xFF, 0xC8, 0x4A, 255), TextAnchor.MiddleCenter, true); Ui.Yukseklik(m, 70); Ui.Golge(m, 3, 0.8f); }
+            else
+            {
+                var sec = Ui.Dugme(ic, "Oyun: " + modAd + "  · oyunlara göz at", "menu_sari", 40); Ui.Yukseklik(sec, 130);
+                sec.onClick.AddListener(OyunSecici);
+            }
 
             if (BenHost)
             {
@@ -326,7 +330,7 @@ namespace PartiLigi.UI
             var idler = new List<string>();
             foreach (var p in oyuncular) idler.Add((string)p["id"]);
             if (_sahne != null) { _sahne.LobiModu(true); _sahne.Oyuncular(idler); }
-            if (_seciciAcik && BenHost) OyunSecici();
+            if (_seciciAcik) OyunSecici();
             foreach (var p in oyuncular) _etiketler[(string)p["id"]] = Etiket(p, hostId);
             if (_oyun != null) OyunKare();
             EtiketleriYerlestir();
@@ -336,36 +340,27 @@ namespace PartiLigi.UI
         // Oyun seçici: Turnuva + Unity'de oynanabilen her oyun; seçince odanın modu değişir (herkes görür)
         bool _seciciAcik;   // lobi her durumda yeniden kurulur; seçici açıksa yeniden açılır (yoksa kendi kendine kapanıyordu)
 
+        int _katalogSayfa = -1;
+
+        // Oyun kataloğu: kaydırarak oyunlar (ekran görüntüleri + kurallar); oda sahibi "Şimdi oyna" ile hemen başlatır
         void OyunSecici()
         {
             _seciciAcik = true;
-            var panel = Ui.Rect("OyunSecici", _ekran); Ui.Doldur(panel, 50, 200, 50, 220);
-            Ui.Kart(panel.gameObject, new Color(0.08f, 0.06f, 0.22f, 0.95f), 0.6f);
-            var ic = Ui.Dikey(panel, "Icerik", 16, 44); Ui.Doldur(ic);
-            var b = Ui.Yazi(ic, "Ne oynayalım?", 64, Ui.Beyaz, TextAnchor.MiddleCenter, true); Ui.Yukseklik(b, 100); Ui.Golge(b, 5, 0.6f);
             var mod = (string)_durum["mode"] ?? "tour";
-            void Sec(string kind) => Calistir(async () =>
+            var k = OyunKatalogu.Ac(_ekran, mod, _katalogSayfa, BenHost ? (Action<string>)(kind => Calistir(() => OyunuBaslat(kind))) : null, () => { _seciciAcik = false; _katalogSayfa = -1; });
+            var eski = k.degisti; k.degisti = sayfa => { eski?.Invoke(sayfa); _katalogSayfa = sayfa; };
+        }
+
+        async Task OyunuBaslat(string kind)
+        {
+            _seciciAcik = false; _katalogSayfa = -1;
+            if (kind == "tour")
             {
-                _seciciAcik = false; Destroy(panel.gameObject);
-                var r = await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = kind });
-                _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz();
-            });
-            var tur = OyunUi.Secenek(ic, $"Turnuva · {OyunKayit.Sayi} oyun sırayla", mod == "tour" || !OyunKayit.Var(mod) ? (Color)Ui.Pembe : new Color(1, 1, 1, 0.14f), 130, 44);
-            tur.d.onClick.AddListener(() => Sec("tour"));
-            var liste = OyunKayit.Hepsi().ToList();
-            for (int i = 0; i < liste.Count; i += 2)
-            {
-                var satir = Ui.Yatay(ic, "Satir", 16); Ui.Yukseklik(satir, 120);
-                for (int j = i; j < Mathf.Min(i + 2, liste.Count); j++)
-                {
-                    var (kind, ad) = liste[j];
-                    var s = OyunUi.Secenek(satir, ad, mod == kind ? (Color)Ui.Pembe : OyunUi.SikRenk[(j + 1) % 4] * new Color(1, 1, 1, 0.8f), 120, 36);
-                    s.d.onClick.AddListener(() => Sec(kind));
-                }
+                if ((string)_durum["mode"] != "tour") await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = "tour" });
+                await PartiApi.Eylem(_kod, "tourGames", new JObject { ["games"] = OyunKayit.Turlar() });
             }
-            var bos = Ui.Rect("Bosluk", ic); Ui.Yukseklik(bos, 0); bos.GetComponent<LayoutElement>().flexibleHeight = 1;
-            var kapat = Ui.Dugme(ic, "Kapat", "menu_gri", 46); Ui.Yukseklik(kapat, 130);
-            kapat.onClick.AddListener(() => { _seciciAcik = false; Destroy(panel.gameObject); });
+            else if ((string)_durum["mode"] != kind) await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = kind });
+            var r = await PartiApi.Eylem(_kod, "start"); _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz();
         }
 
         async Task Baslat()

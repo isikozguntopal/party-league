@@ -1,0 +1,157 @@
+[
+ {
+  "kind": "lazer",
+  "ad": "Sapan Arenası",
+  "kurallar": [
+   "Platformda gizlice yürü, yerini seç ve sapanını doğrult.",
+   "Herkes hazır olunca sırayla taş fırlatılır; taş çarptığını iter (zincirleme çarpışma!).",
+   "Platformdan düşen elenir. Her tur alan küçülür!"
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "bilgi",
+  "ad": "Bil Bakalım",
+  "kurallar": [
+   "Önce kategoriye oy ver. Herkesin 2 jokeri var: Yarı Yarıya, Çift Cevap.",
+   "4 soru sonra sonuncu olan kalan 4 sorunun konusunu seçer.",
+   "Jokerlerini doğru anda kullan! En çok puanı toplayan kazanır."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "keski",
+  "ad": "Keski Düellosu",
+  "kurallar": [
+   "Taş küpün eksik parçalı hali birkaç saniye gösterilir. Ezberle!",
+   "Sonra kendi küpünü parmağınla yont: dokunduğun parça kırılır.",
+   "Aynısını yapamayan elenir. Her tur daha zor! Son kalan kazanır."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "tanir",
+  "ad": "Ne Kadar Tanıyorsun?",
+  "kurallar": [
+   "Takımlar (ikili ya da üçlü). Önce herkes kendisi hakkında 5 soruyu cevaplar.",
+   "Sonra takımlar sırayla oynar: arkadaşının cevaplarını tahmin et!",
+   "Cevaplar açılınca oda sahibi \"Sonraki\"ye basana dek hep birlikte incelenir; skor oyun sonunda açıklanır."
+  ],
+  "takim": true,
+  "anlik": false
+ },
+ {
+  "kind": "basket",
+  "ad": "Pota Atışı",
+  "kurallar": [
+   "Topu parmakla geri çek, bırak: pota yönüne fırlar. 45 saniyede en çok sayıyı yapan kazanır.",
+   "Pota süre ilerledikçe hareket eder. Arka arkaya sayı yaptıkça puanlar katlanır (×2, ×3 … ×5); kaçırırsan kombo biter.",
+   "Pota kenarına değmeden giren \"temiz\" atış +1 puan."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "bombaci",
+  "ad": "Bombayı Çöz",
+  "kurallar": [
+   "İkili takımlar: biri bombayı görür, diğeri kılavuzu. Konuşarak çözün!",
+   "Kablo, düğme ve şifre kilidi modüllerini çöz. 3 hata = BOOM!",
+   "En hızlı çözen takım kazanır. Tek kalan takımda anlatıcı iki kişiye anlatır."
+  ],
+  "takim": true,
+  "anlik": false
+ },
+ {
+  "kind": "cizim",
+  "ad": "Kulaktan Kulağa",
+  "kurallar": [
+   "Bir cümle yaz. Sonra sana gelen cümleyi çiz (kalem, kova, şekiller…).",
+   "Sana gelen çizimin ne olduğunu tahmin edip yaz. Böyle sürer!",
+   "Albümde her çizimin altında + / − ile puan ver (ressam gizli). Tahminin ilk cümleye yakınsa bonus puan.",
+   "Sonuç: çizim oyları + tahmin yakınlığı. Kim neyi çizdi en sonda açıklanır."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "neciz",
+  "ad": "Ne Çizdim?",
+  "kurallar": [
+   "Sırayla herkes çizer, diğerleri alttan tahminini yazar.",
+   "Önce bilen çok puan alır: 10, 9, 8…",
+   "Çizen her doğru tahminde puan kazanır, herkes bilirse bonus!"
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "melodi",
+  "ad": "Şarkıyı Tahmin Et",
+  "kurallar": [
+   "Takımınla aynı şarkıyı dinleyin: ses önce 0,5 sn, sonra 1,5 → 5 → 10 → 20 sn uzar.",
+   "Listeden şarkıyı seçip tahmin et ya da \"Atla\" de: yanlış tahmin/atla takımı sonraki aşamaya geçirir (5 aşama).",
+   "Ne kadar erken bilirsen takım o kadar çok puan alır. 5 şarkı sonunda en çok puanlı takım kazanır."
+  ],
+  "takim": true,
+  "anlik": false
+ },
+ {
+  "kind": "halat",
+  "ad": "Halat Çekme",
+  "kurallar": [
+   "İki eşit takım! ÇEK butonuna olabildiğince hızlı bas.",
+   "Bayrağı kendi tarafına geçiren takım kazanır.",
+   "Ritim tutturan daha güçlü çeker. Hadi!"
+  ],
+  "takim": true,
+  "anlik": true
+ },
+ {
+  "kind": "saniye",
+  "ad": "Kayıp Saniye",
+  "kurallar": [
+   "Kronometre çalışır ama 3. saniyeden sonra kaybolur. Hedef süre ekranın üstünde yazar.",
+   "Süreyi içinden say ve hedefe geldiğini düşündüğünde DURDUR'a bas.",
+   "Hedefe en yakın durduran turu kazanır. 4 tur sonunda toplam sapması en az olan birinci olur."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "suru",
+  "ad": "Sürü",
+  "kurallar": [
+   "Her tur şıklı bir soru gelir; herkes gizlice bir şık seçer.",
+   "Kalabalıkla aynı şeyi seçen puan alır: seçtiğin şıkkı senden başka kaç kişi seçtiyse o kadar puan. Sürüdeysen +3.",
+   "Bir şıkkı tek başına seçen kara koyun olur ve 0 alır."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "ayar",
+  "ad": "Ayar",
+  "kurallar": [
+   "İki zıt kavram arasında gizli bir nokta var; yalnızca anlatıcı görür.",
+   "Anlatıcı tek bir ipucu yazar, diğerleri kadranı çevirir.",
+   "Hedefe ne kadar yakınsan o kadar puan. Anlatıcı da arkadaşlarının ortalamasını alır."
+  ],
+  "takim": false,
+  "anlik": false
+ },
+ {
+  "kind": "telve",
+  "ad": "Telve",
+  "kurallar": [
+   "Falcı bir kartı gizler ve ona tek satırlık bir yorum yazar.",
+   "Herkes yoruma en çok uyan kartı gizlice atar; kartlar karışık açılır.",
+   "Falcı'nın kartını bul. Herkes bilirse Falcı kısmet alamaz."
+  ],
+  "takim": false,
+  "anlik": false
+ }
+]

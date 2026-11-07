@@ -41,22 +41,29 @@ fi
 
 set +e
 BASARILI=(); BASARISIZ=()
+XB=(xcodebuild -project unity/Builds/iOS/Unity-iPhone.xcodeproj -scheme Unity-iPhone DEVELOPMENT_TEAM=J2UN2TD73C CODE_SIGN_STYLE=Automatic
+    -allowProvisioningUpdates -allowProvisioningDeviceRegistration -derivedDataPath /tmp/parti-dd)
+# 1) bir kez, telefondan bağımsız derle (iki telefon da imza profilinde kayıtlı; telefonun açık olması gerekmez)
+echo "== Xcode derleme + imza (genel) $(date +%T)"
+GENEL=0
+if "${XB[@]}" -destination "generic/platform=iOS" build > /tmp/xcode-build.log 2>&1; then GENEL=1; grep -E "BUILD SUCCEEDED" /tmp/xcode-build.log; else grep -E "error:" /tmp/xcode-build.log | head -3; fi
 for CIHAZ in "${CIHAZLAR[@]}"; do
-  # hedef cihazla derlemek, yeni telefonu ücretsiz hesabın imza profiline ekler (-allowProvisioningDeviceRegistration)
-  echo "== Xcode derleme + imza ($CIHAZ) $(date +%T)"
-  if ! xcodebuild -project unity/Builds/iOS/Unity-iPhone.xcodeproj -scheme Unity-iPhone -destination "id=$CIHAZ" \
-      DEVELOPMENT_TEAM=J2UN2TD73C CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
-      -derivedDataPath /tmp/parti-dd build > /tmp/xcode-build.log 2>&1; then
-    grep -E "error:" /tmp/xcode-build.log | head -3
-    BASARISIZ+=("$CIHAZ (derleme/imza hatası)"); continue
+  # genel derleme olmadıysa (ör. yeni telefon imza profiline eklenecekse) hedef cihazla derle
+  if [ $GENEL = 0 ]; then
+    echo "== Xcode derleme + imza ($CIHAZ) $(date +%T)"
+    if ! "${XB[@]}" -destination "id=$CIHAZ" build > /tmp/xcode-build.log 2>&1; then
+      neden=$(grep -oE "needs to be unlocked|Unable to find a destination" /tmp/xcode-build.log | head -1)
+      [ "$neden" = "needs to be unlocked" ] && neden="telefon kilitli" || { [ -n "$neden" ] && neden="telefon görünmüyor (kilidi açık ve aynı Wi-Fi'da mı?)" || neden="derleme/imza hatası"; }
+      BASARISIZ+=("$CIHAZ ($neden)"); continue
+    fi
   fi
-  grep -E "BUILD SUCCEEDED" /tmp/xcode-build.log
   APP=$(find /tmp/parti-dd/Build/Products -maxdepth 2 -name "*.app" -path "*iphoneos*" | head -1)
   echo "== Yükleme ($CIHAZ) $(date +%T)"
-  if xcrun devicectl device install app --device "$CIHAZ" "$APP" || { sleep 5; xcrun devicectl device install app --device "$CIHAZ" "$APP"; }; then
+  if xcrun devicectl device install app --device "$CIHAZ" "$APP" > /tmp/yukle-$CIHAZ.log 2>&1 || { sleep 5; xcrun devicectl device install app --device "$CIHAZ" "$APP" > /tmp/yukle-$CIHAZ.log 2>&1; }; then
     BASARILI+=("$CIHAZ")
   else
-    BASARISIZ+=("$CIHAZ (telefona ulaşılamadı: kilidi açık ve Mac ile aynı Wi-Fi'da mı?)")
+    grep -qiE "locked|unlock" /tmp/yukle-$CIHAZ.log && neden="telefon kilitli" || neden="telefona ulaşılamadı: kilidi açık ve Mac ile aynı Wi-Fi'da mı?"
+    BASARISIZ+=("$CIHAZ ($neden)")
   fi
 done
 echo "== YÜKLENDİ: ${BASARILI[*]:-yok}"

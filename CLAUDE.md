@@ -258,3 +258,13 @@ Unity: `unity/Assets/Scripts/Net/PartiApi.cs`; test `PARTI_SUNUCU=http://localho
 - Hazır: **Halat Çekme** (`Halat/HalatSim.cs` = halat.js kopyası). Kalan: Bomba Ustası, Kör Koşu, Kayık Kafilesi, Pist Canavarı, Pati Koşusu.
 - Şarkıyı Tahmin Et: ses iOS eklentisiyle (`Plugins/iOS/MelodiSes.mm`, AVAudioPlayer; Unity m4a/AAC çözemiyor), editörde ses yok. Havuz `node scripts/melodi-unity.mjs` → `Resources/Melodi/sarkilar.json`.
 - İkinci telefon: "Yağmur" (UDID 00008120-0019544A012B601E) yüklendi; `scripts/ios-yukle.sh` bağlı tüm iPhone'lara yükler.
+
+## Yeni akış (2026-11-08, editörde denendi, telefonda DENENMEDİ)
+
+- **Oda kodu kullanıcıdan gizli.** Ana ekran (`UI/Uygulama.Ekranlar.cs` `AnaEkran`): tam ekran oynanış videosu (podyum + oyunlar, her 5 sn açıklama), Başlat / Ben / Ayarlar. Başlat odayı kendisi kurar.
+- **Lobi** (`UI/Uygulama.Lobi.cs`): oyunlar tam ekran video sayfaları (kaydır); oda sahibi dokunduğu oyunu sıraya ekler (#1, #2 …) → `tourGames` (sunucu artık gönderilen sırayı KORUR; PWA sabit TOUR sırasıyla gönderir). Alttan panel: sıra, odadakiler + bot, çevrimiçi oyuncular (Davet et), Başla.
+- **Çevrimiçi / davet** (`public/presence.js`): `hello` (≈4 sn), `invite`, `inviteAck`; Cloudflare'da `__lobi` Durable Object'i (worker.mjs yönlendirir), yerelde bellek. Davet kartı üstten çıkar (Katıl / Hayır). Test: `test/presence.test.mjs`. Yayınlandı (sw v63).
+- **Klipler**: `bash scripts/klipler-hepsi.sh` (npm run dev açıkken) → `StreamingAssets/Klipler/*.mp4` (540×960, 15 fps, H.264); tek klip `scripts/klip-kaydet.sh`; kayıt `MenuGoruntu.Cek -kayit`. ffmpeg: `~/.local/bin/ffmpeg` (imageio-ffmpeg kopyası). Oynatıcı `UI/KlipOynatici.cs`.
+- **Ben**: ad + karakter (yalnızca bu cihazda; `MenuSahnesi.KarakterSecimi`, diğer oyuncular hâlâ kimlik özetini görür). **Ayarlar**: ses (`AudioListener.volume`), bot zorluğu (yalnızca kaydediliyor, sunucuya henüz bağlı değil).
+- Efektler `UI/Efekt.cs` (konfeti, hızlı çarpı/tik, salla, nabız): Bil Bakalım açılışı, Ne Çizdim? tahmin balonları.
+- Yapılacak: takım yönetimi (takım sayısı ±, sürükle-bırak oyuncu/oyun sırası), bot zorluğunun sunucuya bağlanması, karakter seçiminin diğerlerine görünmesi, Pist Canavarı (araba yarışı) ve kalan gerçek zamanlı oyunlar.

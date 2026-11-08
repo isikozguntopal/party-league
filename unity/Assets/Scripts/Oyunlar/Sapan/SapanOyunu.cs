@@ -324,7 +324,7 @@ namespace PartiLigi.Oyunlar.Sapan
         Karakter KarakterAl(string id)
         {
             if (_kar.TryGetValue(id, out var k)) { k.go.SetActive(true); return k; }
-            var sablon = sablonlar[Ozet(id) % sablonlar.Length];
+            var sablon = sablonlar[Menu.MenuSahnesi.SablonIndeksi(id, sablonlar.Length)];
             var go = Instantiate(sablon, transform); go.SetActive(true); go.name = "Sapan_" + id;
             var olcek = sablon.transform.localScale * (Boy / 1.25f);
             go.transform.localScale = olcek;

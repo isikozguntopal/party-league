@@ -489,8 +489,8 @@ for (let r = 2; r <= 10; r++) assert.ok(L.arenaScale(r) < L.arenaScale(r - 1));
   const r2 = await room(2, 0, 'tour');
   await handle(r2.st, { action: 'tourGames', code: r2.code, playerId: A, games: ['bilgi', 'lazer'] }, 0);
   r = await handle(r2.st, { action: 'start', code: r2.code, playerId: A }, 0);
-  assert.deepEqual(r.state.tour.list, ['lazer', 'bilgi']);
-  ok('Turnuvada oyun seçimi: yalnızca seçilen oyunlar, sabit sırada');
+  assert.deepEqual(r.state.tour.list, ['bilgi', 'lazer']);
+  ok('Turnuvada oyun seçimi: yalnızca seçilen oyunlar, seçildiği sırada');
 }
 
 // ---------- Oyun ortasında çıkan, mesajlar, görünüm, bekleme ----------

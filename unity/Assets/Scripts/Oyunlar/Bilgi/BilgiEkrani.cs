@@ -229,13 +229,27 @@ namespace PartiLigi.Oyunlar.Bilgi
             int bildi = (int?)son["nCorrect"] ?? 0, kisi = (int?)son["nAlive"] ?? 0;
             _bilgi.text = $"{kisi} kişiden {bildi} kişi bildi" + ((double?)son["mult"] > 1 ? $" · puan ×{OyunBaglami.Saniye((double)son["mult"] * 1000, "0.##")}" : "");
             if (q != null) SoruKarti((string)q["q"]);
+            var benimHamle = cevaplar[B.Ben] as JObject;
+            int benimSik = (int?)benimHamle?["a"] ?? -1, benimSik2 = (int?)benimHamle?["a2"] ?? -1;
+            RectTransform dogruRt = null, benimRt = null;
             for (int k = 0; k < 4; k++)
             {
                 var kimler = cevaplar.Properties().Where(p => (int?)p.Value["a"] == k || (int?)p.Value["a2"] == k).Select(p => B.Ad(p.Name)).ToList();
                 var renk = k == dogru ? new Color32(0x2E, 0xB8, 0x72, 255) : new Color32(0x50, 0x48, 0x78, 200);
                 var s = OyunUi.Secenek(_govde, Harf[k] + ")  " + (string)q?["o"]?[k] + (kimler.Count > 0 ? "\n<size=28>" + string.Join(", ", kimler) + "</size>" : ""), renk, 130, 38);
                 s.yazi.alignment = TextAnchor.MiddleLeft; s.yazi.supportRichText = true; s.d.interactable = false;
+                if (k != dogru && (k == benimSik || k == benimSik2)) renk = new Color32(0xE0, 0x31, 0x31, 235);   // benim yanlışım kırmızı
                 s.zemin.color = renk;
+                if (k == dogru) dogruRt = (RectTransform)s.d.transform;
+                if (k == benimSik) benimRt = (RectTransform)s.d.transform;
+            }
+            // efekt: bildiysem tik + konfeti, bilemediysem çarpı + sallanma
+            if (benimHamle != null && benimSik >= 0)
+            {
+                bool bildim = ((int?)benimHamle["pts"] ?? 0) > 0;
+                Efekt.Isaret(B.alan, new Vector2(0, 120), bildim, 460);
+                if (bildim) { Efekt.Konfeti(B.alan, new Vector2(0, 0), 90); if (dogruRt != null) Efekt.Nabiz(dogruRt); }
+                else if (benimRt != null) Efekt.Salla(benimRt);
             }
             var benim = cevaplar[B.Ben] as JObject;
             if (benim != null)

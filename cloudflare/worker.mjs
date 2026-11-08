@@ -26,6 +26,12 @@ export default {
     if (body.action === 'ice') return json({ iceServers: await getIce(env) });
     if (body.action === 'muzik') return json({ status: 'off' }); // yapay zekâ müziği henüz taşınmadı: istemci yerel müziğe döner
 
+    // çevrimiçi oyuncular / davetler: odaya bağlı değil, tek bir "__lobi" nesnesinde
+    if (body.action === 'hello' || body.action === 'invite' || body.action === 'inviteAck') {
+      const res = await askRoom(env, '__lobi', body);
+      return new Response(res.body, { status: res.status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...CORS } });
+    }
+
     if (body.action === 'create') {
       for (let i = 0; i < 12; i++) {
         const code = newRoomCode();

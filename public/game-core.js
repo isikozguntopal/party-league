@@ -11,6 +11,7 @@ import { GameError, uid, rankingFromOuts } from './games/util.js';
 import { cleanLook, randomLook } from './games/avatar.js';
 import { cleanChat } from './games/filtre.js';
 import * as lazer from './games/lazer.js';
+import { PRESENCE_ACTIONS, presence } from './presence.js';
 import * as bomba from './games/bomba.js';
 import * as cizim from './games/cizim.js';
 import * as bilgi from './games/bilgi.js';
@@ -172,7 +173,8 @@ function startMatch(x, now) {
   x.players = activePlayers(x).filter((p) => !p.temp);
   for (const p of x.players) delete p.pending;
   fixTeams(x);
-  let list = x.mode === 'tour' ? TOUR.filter((k) => (x.tourGames || TOUR).includes(k)) : [x.mode];
+  // turnuva: oda sahibinin seçtiği sırayla (tourGames sırası korunur; geçersizler atlanır)
+  let list = x.mode === 'tour' ? (x.tourGames || TOUR).filter((k, i, a) => TOUR.includes(k) && a.indexOf(k) === i) : [x.mode];
   const teamTour = x.mode === 'tour' && !!x.teams;
   if (teamTour) {
     list = list.filter((k) => teamOk(k, x.teams));
@@ -463,6 +465,11 @@ export async function handle(store, body, now = Date.now()) {
   if (!pid) throw new GameError('Oyuncu kimliği geçersiz');
   const action = body.action;
   let extra = null;
+  if (PRESENCE_ACTIONS.includes(action)) {
+    const out = await presence(store, action, pid, body, now);
+    if (out.error) throw new GameError(out.error, out.status);
+    return out;
+  }
 
   if (action === 'create') {
     // newCode: kodu önceden seçen sunucu (Cloudflare: oda başına bir Durable Object) yalnızca o kodu dener
@@ -614,7 +621,8 @@ export async function handle(store, body, now = Date.now()) {
       d = await mutate(store, code, (x) => {
         requireHost(x, pid);
         if (x.status !== 'lobby') throw new GameError('Oyun başladı');
-        const list = TOUR.filter((k) => Array.isArray(body.games) && body.games.includes(k));
+        // gönderilen sıra korunur (Unity: seçim sırası #1, #2 …); tekrarlar ve geçersizler atlanır
+        const list = (Array.isArray(body.games) ? body.games : []).filter((k, i, a) => TOUR.includes(k) && a.indexOf(k) === i);
         if (!list.length) throw new GameError('En az bir oyun seç');
         x.tourGames = list;
       });

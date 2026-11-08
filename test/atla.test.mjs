@@ -12,13 +12,13 @@ const A = 'aaaaaaa', B = 'bbbbbbb';
   await handle(st, { action: 'join', code, playerId: B, name: 'Banu' }, 0);
   await handle(st, { action: 'tourGames', code, playerId: A, games: ['saniye', 'basket'] }, 0);
   r = await handle(st, { action: 'start', code, playerId: A }, 0);
-  assert.equal(r.state.kind, 'basket');
+  assert.equal(r.state.kind, 'saniye');   // seçim sırası korunur
   await assert.rejects(handle(st, { action: 'skip', code, playerId: B }, 500), /oda sahibi/i);
   r = await handle(st, { action: 'skip', code, playerId: A }, 500);
   assert.equal(r.state.status, 'inter', 'atlanınca sonraki oyuna geçilir');
   assert.ok(Object.values(r.state.tour.results[0].gained).every((v) => v === 0), 'atlanan oyunda puan yok');
   r = await handle(st, { action: 'state', code, playerId: A }, r.state.interUntil + 10);
-  assert.equal(r.state.kind, 'saniye');
+  assert.equal(r.state.kind, 'basket');   // seçim sırası: saniye → basket
   ok('Oda sahibi oyunu atlar (puan yok, sonraki oyun gelir); başkası atlayamaz');
 }
 {

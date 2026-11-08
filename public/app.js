@@ -269,7 +269,7 @@ $('#modes').addEventListener('click', (e) => {
     e.stopPropagation();
     const cur = new Set(app.s.tourGames);
     cur.has(t.dataset.tg) ? cur.delete(t.dataset.tg) : cur.add(t.dataset.tg);
-    act({ action: 'tourGames', games: [...cur] });
+    act({ action: 'tourGames', games: G.TOUR.filter((k) => cur.has(k)) });   // sunucu gönderilen sırayı korur: PWA sabit turnuva sırasını gönderir
     return;
   }
   const b = e.target.closest('[data-mode]');

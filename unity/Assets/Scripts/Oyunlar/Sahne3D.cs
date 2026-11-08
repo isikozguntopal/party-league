@@ -63,7 +63,7 @@ namespace PartiLigi.Oyunlar
         {
             var menu = Object.FindFirstObjectByType<MenuSahnesi>(FindObjectsInactive.Include);
             if (menu == null || menu.sablonlar == null || menu.sablonlar.Length == 0) return null;
-            var sablon = menu.sablonlar[MenuSahnesi.Ozet(oyuncuId) % menu.sablonlar.Length];
+            var sablon = menu.sablonlar[MenuSahnesi.SablonIndeksi(oyuncuId, menu.sablonlar.Length)];
             var go = Object.Instantiate(sablon, ebeveyn ?? kok); go.SetActive(true);
             go.transform.localScale = sablon.transform.localScale * (boy / 1.25f);
             return go;

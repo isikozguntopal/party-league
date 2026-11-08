@@ -16,7 +16,9 @@ namespace PartiLigi.Oyunlar.Neciz
     public class NecizEkrani : OyunEkrani
     {
         const float BotCizimMs = 26000;
-        Text _sol, _sag, _bilgi, _kelime, _akis;
+        Text _sol, _sag, _bilgi, _kelime;
+        RectTransform _sohbet;                                // tahmin balonları (en yeni altta)
+        readonly HashSet<string> _gorulen = new HashSet<string>();
         RectTransform _govde;
         string _anahtar;
         CizimTuvali _tuval; InputField _girdi;
@@ -51,7 +53,7 @@ namespace PartiLigi.Oyunlar.Neciz
             _sag.text = B.Oynaniyor && !acilis && simdi >= B.TurBasi ? OyunBaglami.Geri(son - simdi) : "";
             _sol.transform.parent.gameObject.SetActive(B.Oynaniyor || acilis);
             if (!acilis && B.Oynaniyor && Faz == "draw") CizimKaresi(simdi);
-            if (_akis != null) _akis.text = Akis();
+            if (_sohbet != null) SohbetGuncelle();
             if (_kelime != null && !acilis) _kelime.text = KelimeYazi();
             Otomatik(simdi);
         }
@@ -67,6 +69,38 @@ namespace PartiLigi.Oyunlar.Neciz
             var m = (string)B.G?["mask"]; return m != null ? string.Join(" ", m.ToCharArray()) : "";
         }
 
+        // Yeni tahminler: balon olarak eklenir (en çok 5), yanlışta tuvalin üstünde hızlı çarpı, doğruda tik + konfeti
+        void SohbetGuncelle()
+        {
+            var f = B.G?["feed"] as JArray; if (f == null) return;
+            foreach (JObject x in f)
+            {
+                var n = x["n"]?.ToString(); if (n == null || !_gorulen.Add(n)) continue;
+                string kim = (string)x["p"]; bool ok = (bool?)x["ok"] == true, yakin = (bool?)x["close"] == true, ben = kim == B.Ben;
+                Balon(kim, ok ? "bildi!" : (string)x["txt"] ?? "…", ok, yakin);
+                var tuvalMerkez = _tuval != null ? (Vector2)B.alan.InverseTransformPoint(_tuval.transform.position) : Vector2.zero;
+                if (ok) { Efekt.Isaret(B.alan, tuvalMerkez, true, ben ? 460 : 220); Efekt.Konfeti(B.alan, tuvalMerkez, ben ? 90 : 30, ben ? 1f : 0.6f); }
+                else if (!yakin || ben) Efekt.Isaret(B.alan, tuvalMerkez + (ben ? Vector2.zero : new Vector2(Random.Range(-250f, 250f), Random.Range(-250f, 250f))), false, ben ? 420 : 160);
+            }
+            while (_sohbet.childCount > 5) Object.DestroyImmediate(_sohbet.GetChild(0).gameObject);
+        }
+
+        void Balon(string kim, string metin, bool ok, bool yakin)
+        {
+            var b = Ui.Rect("Balon", _sohbet);
+            var h = b.gameObject.AddComponent<HorizontalLayoutGroup>(); h.padding = new RectOffset(14, 26, 8, 8); h.spacing = 14; h.childAlignment = TextAnchor.MiddleLeft;
+            h.childControlWidth = h.childControlHeight = true; h.childForceExpandWidth = h.childForceExpandHeight = false;
+            Ui.Kart(b.gameObject, ok ? new Color32(0x22, 0x9E, 0x5E, 235) : new Color32(0x26, 0x20, 0x52, 225), 2.4f).raycastTarget = false;
+            Ui.Yukseklik(b, 68);
+            // oyuncu rozeti: renkli yuvarlak + baş harf
+            var r = Ui.Rect("Rozet", b); var le = r.gameObject.AddComponent<LayoutElement>(); le.preferredWidth = le.minWidth = 48; le.preferredHeight = 48;
+            Ui.Kart(r.gameObject, B.Renk(kim), 4f).raycastTarget = false;
+            var bh = Ui.Yazi(r, B.Ad(kim).Substring(0, 1).ToUpper(new System.Globalization.CultureInfo("tr-TR")), 28, Ui.Beyaz, TextAnchor.MiddleCenter, true); Ui.Doldur(bh.rectTransform);
+            var t = Ui.Yazi(b, $"<b>{B.Ad(kim)}</b>  {metin}" + (yakin ? "  <color=#FFC84A>yakın!</color>" : ""), 32, Ui.Beyaz, TextAnchor.MiddleLeft, ok);
+            t.supportRichText = true; t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            b.localScale = Vector3.one * 0.6f; Efekt.Nabiz(b, 0.35f); b.localScale = Vector3.one;
+        }
+
         string Akis()
         {
             var f = B.G?["feed"] as JArray; if (f == null) return "";
@@ -77,7 +111,7 @@ namespace PartiLigi.Oyunlar.Neciz
         void Yenile(bool acilis, double simdi)
         {
             foreach (Transform c in _govde) Object.Destroy(c.gameObject);
-            _tuval = null; _girdi = null; _kelime = null; _akis = null; _botCizim = null; _botAnahtar = null;
+            _tuval = null; _girdi = null; _kelime = null; _sohbet = null; _botCizim = null; _botAnahtar = null;
             if (acilis) { AcilisCiz(); return; }
             if (!B.Oynaniyor) { _bilgi.text = ""; return; }
             if (simdi < B.TurBasi)
@@ -126,7 +160,10 @@ namespace PartiLigi.Oyunlar.Neciz
                     _girdi.onEndEdit.AddListener(_ => { if (Input.GetKeyDown(KeyCode.Return)) Tahmin(); });
                 }
             }
-            _akis = Ui.Yazi(_govde, "", 32, Ui.Beyaz, TextAnchor.UpperLeft); Ui.Yukseklik(_akis, 0); _akis.GetComponent<LayoutElement>().flexibleHeight = 1; _akis.supportRichText = true;
+            _sohbet = Ui.Dikey(_govde, "Sohbet", 8, 0, TextAnchor.LowerLeft); Ui.Yukseklik(_sohbet, 0); _sohbet.GetComponent<LayoutElement>().flexibleHeight = 1;
+            _sohbet.GetComponent<VerticalLayoutGroup>().childForceExpandWidth = false;
+            // tur başında görülenleri işaretle (eski tahminler için efekt çıkmasın)
+            foreach (JObject x in (B.G?["feed"] as JArray) ?? new JArray()) _gorulen.Add((string)x["n"]?.ToString());
         }
 
         void Tahmin()

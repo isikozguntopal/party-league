@@ -38,6 +38,10 @@ namespace PartiLigi.Menu
         readonly Dictionary<string, Oyuncu> _oyuncular = new Dictionary<string, Oyuncu>();
         readonly List<string> _silinecek = new List<string>();
 
+        /// <summary>Kutlama: kürsüdeki karakterler sevinerek zıplar (ana ekran videosu için).</summary>
+        public bool kutlama;
+        readonly Dictionary<Animation, Vector3> _kutlamaTaban = new Dictionary<Animation, Vector3>();
+
         static readonly string[] Hareketler = { "emote-yes", "interact-right", "interact-left", "pick-up", "emote-no" };
 
         void Start()
@@ -112,7 +116,7 @@ namespace PartiLigi.Menu
         Oyuncu Yeni(string id)
         {
             if (sablonlar == null || sablonlar.Length == 0) return null;
-            var sablon = sablonlar[Ozet(id) % sablonlar.Length];
+            var sablon = sablonlar[SablonIndeksi(id, sablonlar.Length)];
             var go = Instantiate(sablon, _lobiKok);
             go.name = "Oyuncu_" + id; go.SetActive(true);
             var o = new Oyuncu { go = go, anim = go.GetComponent<Animation>(), olcek = sablon.transform.localScale, dogus = Time.time };
@@ -136,6 +140,10 @@ namespace PartiLigi.Menu
         }
 
         // Kimlikten sabit karakter seçimi (string.GetHashCode süreçler arasında değişebilir → FNV-1a)
+        /// <summary>"Ben" ekranında seçilen karakter (yalnızca bu cihazdaki oyuncu; -1 = seçim yok).</summary>
+        public static System.Func<string, int> KarakterSecimi;
+        public static int SablonIndeksi(string id, int adet) { int s = KarakterSecimi?.Invoke(id) ?? -1; return s >= 0 && s < adet ? s : Ozet(id) % adet; }
+
         public static int Ozet(string s)
         {
             unchecked
@@ -187,6 +195,14 @@ namespace PartiLigi.Menu
                 }
 
             LobiOyunculariniGuncelle(t);
+            if (kutlama)
+                for (int i = 0; i < karakterler.Length; i++)
+                {
+                    var a = karakterler[i]; if (a == null) continue;
+                    if (!_kutlamaTaban.ContainsKey(a)) { _kutlamaTaban[a] = a.transform.localPosition; if (a["emote-yes"] != null) { a["emote-yes"].wrapMode = WrapMode.Loop; a.CrossFade("emote-yes", 0.2f); } }
+                    float zip = Mathf.Abs(Mathf.Sin(t * 5.2f + i * 1.3f)) * (i == 0 ? 0.7f : 0.45f);
+                    a.transform.localPosition = _kutlamaTaban[a] + Vector3.up * zip;
+                }
 
             _lobiOran = Mathf.MoveTowards(_lobiOran, _lobiHedefOran, Time.deltaTime * 1.6f);
             float s = Mathf.SmoothStep(0, 1, _lobiOran);

@@ -13,7 +13,7 @@ using UnityEngine.UI;
 namespace PartiLigi.UI
 {
     /// <summary>Uygulama kabuğu: ana menü → oda kur/katıl → lobi (→ oyun yer tutucusu). Tüm arayüz kodla kurulur.</summary>
-    public class Uygulama : MonoBehaviour
+    public partial class Uygulama : MonoBehaviour
     {
         Canvas _canvas;
         RectTransform _kok, _ekran;
@@ -57,6 +57,9 @@ namespace PartiLigi.UI
             _ekran = Ui.Rect("Ekran", _kok); Ui.Doldur(_ekran);
             _sahne = FindFirstObjectByType<MenuSahnesi>();
             KurToast();
+            SesUygula();
+            Menu.MenuSahnesi.KarakterSecimi = id => id == PartiApi.PlayerId ? PlayerPrefs.GetInt(KarakterAnahtar, -1) : -1;
+            StartCoroutine(MerhabaDongusu());
 
             var env = Environment.GetEnvironmentVariable("PARTI_SUNUCU");
             if (!string.IsNullOrEmpty(env)) PartiApi.Sunucu = env;
@@ -67,7 +70,10 @@ namespace PartiLigi.UI
             // Telefonsuz görsel kontrol (MenuGoruntu -ekran katil|lobi): sunucuya gitmeden ekranı aç
             var onizleme = Environment.GetEnvironmentVariable("PARTI_ONIZLEME");
             if (onizleme == "katil") { KatilEkrani(); return; }
-            if (onizleme == "lobi" || onizleme == "lobi-secici") { _durum = OrnekLobi(); _kod = (string)_durum["code"]; Ciz(); if (onizleme == "lobi-secici") { int.TryParse(Environment.GetEnvironmentVariable("PARTI_KATALOG_SAYFA") ?? "-1", out _katalogSayfa); OyunSecici(); } return; }
+            if (onizleme == "podyum") { YeniEkran("menu"); if (_sahne != null) _sahne.kutlama = true; return; }   // yalnızca 3D kürsü + kutlama (video için)
+            if (onizleme == "lobi" || onizleme == "lobi-panel") { _durum = OrnekLobi(); _kod = (string)_durum["code"]; Ciz(); if (onizleme == "lobi-panel") PanelAc(true); return; }
+            if (onizleme == "ben") { BenEkrani(); return; }
+            if (onizleme == "ayarlar") { AyarlarEkrani(); return; }
             if (onizleme == "sapan" || (onizleme ?? "").StartsWith("oyun:"))
             {
                 // gerçek (yerel) sunucuyla uçtan uca: oda kur → 3 bot → oyun → kendiliğinden oyna
@@ -158,9 +164,9 @@ namespace PartiLigi.UI
         {
             foreach (Transform c in _ekran) Destroy(c.gameObject);
             _ekranAdi = ad;
-            if (ad != "lobi") _seciciAcik = false;
             EtiketleriTemizle();
-            if (ad != "lobi" && _sahne != null) _sahne.LobiModu(false);
+            if (ad != "lobi" && ad != "ben" && _sahne != null) _sahne.LobiModu(false);
+            if (ad != "menu" && ad != "lobi" && _klip != null) _klip.Durdur();
             if (_oyun != null) { _oyun.Kapat(); _oyun = null; _oyunAnahtar = null; }
             _etiketKaynagi = _sahne;
             // menü ve lobide 3D sahne görünür; diğer ekranlarda okunurluk için koyu perde
@@ -180,33 +186,7 @@ namespace PartiLigi.UI
         static string AdTemizle(string s) => string.IsNullOrWhiteSpace(s) ? "Oyuncu" : s.Trim();
 
         // ---------- Ana menü ----------
-        void AnaMenu()
-        {
-            _yokla = false; _kod = null; _durum = null;
-            var ic = YeniEkran("menu");
-            var bosUst = Ui.Rect("Bosluk", ic); Ui.Yukseklik(bosUst, 40);
-            var baslik = Ui.Yazi(ic, "PARTİ LİGİ", 150, Ui.Beyaz, TextAnchor.MiddleCenter, true, "Baslik");
-            baslik.horizontalOverflow = HorizontalWrapMode.Overflow; baslik.resizeTextForBestFit = true; baslik.resizeTextMaxSize = 150; baslik.resizeTextMinSize = 60;
-            var dis = baslik.gameObject.AddComponent<Outline>(); dis.effectColor = new Color32(0xC2, 0x1E, 0x5A, 255); dis.effectDistance = new Vector2(5, -5);
-            Ui.Golge(baslik, 14, 0.6f);
-            Ui.Yukseklik(baslik, 200);
-            var alt = Ui.Yazi(ic, "Arkadaşlarınla 20 mini oyun!", 50, new Color32(0xFF, 0xB8, 0xD2, 255), TextAnchor.MiddleCenter, true, "Alt"); Ui.Yukseklik(alt, 80);
-            Ui.Golge(alt, 4, 0.7f);
-            var orta = Ui.Rect("Sahne", ic); Ui.Yukseklik(orta, 0); orta.GetComponent<LayoutElement>().flexibleHeight = 1; // 3D kürsü burada görünür
-
-            var ad = Ui.Girdi(ic, "Adın", 14); ad.text = Ad;
-            var kur = Ui.Dugme(ic, "Oda Kur", "menu_pembe", 64);
-            var katil = Ui.Dugme(ic, "Odaya Katıl", "menu_mavi", 64);
-            var bosAlt = Ui.Rect("BoslukAlt", ic); Ui.Yukseklik(bosAlt, 30);
-
-            kur.onClick.AddListener(() => Calistir(async () =>
-            {
-                PlayerPrefs.SetString(AdAnahtar, AdTemizle(ad.text)); PlayerPrefs.Save();
-                var r = await PartiApi.OdaKur(AdTemizle(ad.text));
-                LobiyeGir(r);
-            }));
-            katil.onClick.AddListener(() => { PlayerPrefs.SetString(AdAnahtar, AdTemizle(ad.text)); PlayerPrefs.Save(); KatilEkrani(); });
-        }
+        void AnaMenu() => AnaEkran();
 
         // ---------- Odaya katıl ----------
         void KatilEkrani()
@@ -280,102 +260,6 @@ namespace PartiLigi.UI
 
         static Color Renk(string hex) { return ColorUtility.TryParseHtmlString(hex ?? "", out var c) ? c : Color.gray; }
 
-        void LobiCiz()
-        {
-            var ic = YeniEkran("lobi");
-            var ust = Ui.Yazi(ic, "ODA KODU", 44, new Color32(0xFF, 0xB8, 0xD2, 255), TextAnchor.MiddleCenter, true); Ui.Yukseklik(ust, 56); Ui.Golge(ust, 4, 0.7f);
-            var kod = Ui.Yazi(ic, (string)_durum["code"], 170, Ui.Beyaz, TextAnchor.MiddleCenter, true); Ui.Yukseklik(kod, 200);
-            var kodDis = kod.gameObject.AddComponent<Outline>(); kodDis.effectColor = new Color32(0xC2, 0x1E, 0x5A, 255); kodDis.effectDistance = new Vector2(6, -6);
-            Ui.Golge(kod, 14, 0.6f);
-            var paylas = Ui.Yazi(ic, "Arkadaşların bu kodla “Odaya Katıl” desin", 38, Ui.Beyaz); Ui.Yukseklik(paylas, 60); Ui.Golge(paylas, 3, 0.8f);
-            var orta = Ui.Rect("Sahne", ic); Ui.Yukseklik(orta, 0); orta.GetComponent<LayoutElement>().flexibleHeight = 1; // karakterler burada
-
-            var hostId = (string)_durum["hostId"];
-            var oyuncular = new List<JObject>();
-            foreach (JObject p in (JArray)_durum["players"]) if ((bool?)p["left"] != true) oyuncular.Add(p);
-            var sayi = Ui.Yazi(ic, oyuncular.Count + " / 10 oyuncu", 40, Ui.Soluk, TextAnchor.MiddleCenter, true); Ui.Yukseklik(sayi, 56); Ui.Golge(sayi, 3, 0.8f);
-
-            // oyun seçimi: turnuva ya da tek oyun (oda sahibi seçer, diğerleri görür)
-            var mod = (string)_durum["mode"] ?? "tour";
-            var modAd = mod != "tour" && OyunKayit.Var(mod) ? OyunKayit.Ad(mod) : $"Turnuva ({OyunKayit.Sayi} oyun)";
-            if (BenHost)
-            {
-                var sec = Ui.Dugme(ic, "Oyun: " + modAd + "  ›", "menu_sari", 46); Ui.Yukseklik(sec, 130);
-                sec.onClick.AddListener(OyunSecici);
-            }
-            else
-            {
-                var sec = Ui.Dugme(ic, "Oyun: " + modAd + "  · oyunlara göz at", "menu_sari", 40); Ui.Yukseklik(sec, 130);
-                sec.onClick.AddListener(OyunSecici);
-            }
-
-            if (BenHost)
-            {
-                var basla = Ui.Dugme(ic, "Başlat", "menu_pembe", 64);
-                basla.onClick.AddListener(() => Calistir(Baslat));
-                var satir = Ui.Yatay(ic, "AltSatir", 28); Ui.Yukseklik(satir, 170);
-                var bot = Ui.Dugme(satir, "+ Bot", "menu_mavi", 50);
-                bot.onClick.AddListener(() => Calistir(async () => { var r = await PartiApi.Eylem(_kod, "addBot"); _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz(); }));
-                var cik = Ui.Dugme(satir, "Çık", "menu_gri", 50);
-                cik.onClick.AddListener(OdadanCik);
-            }
-            else
-            {
-                var bekle = Ui.Yazi(ic, "Oda sahibinin başlatması bekleniyor…", 42, Ui.Beyaz); Ui.Yukseklik(bekle, 90); Ui.Golge(bekle, 3, 0.8f);
-                var cik = Ui.Dugme(ic, "Odadan çık", "menu_gri", 46);
-                cik.onClick.AddListener(OdadanCik);
-            }
-
-            // 3D sahne: her oyuncu kendi karakteriyle, üstünde isim etiketi
-            var idler = new List<string>();
-            foreach (var p in oyuncular) idler.Add((string)p["id"]);
-            if (_sahne != null) { _sahne.LobiModu(true); _sahne.Oyuncular(idler); }
-            if (_seciciAcik) OyunSecici();
-            foreach (var p in oyuncular) _etiketler[(string)p["id"]] = Etiket(p, hostId);
-            if (_oyun != null) OyunKare();
-            EtiketleriYerlestir();
-        }
-
-        // Turnuva yalnızca Unity'de oynanabilen oyunlarla (OyunKayit) başlatılır; tek oyun varsa doğrudan o
-        // Oyun seçici: Turnuva + Unity'de oynanabilen her oyun; seçince odanın modu değişir (herkes görür)
-        bool _seciciAcik;   // lobi her durumda yeniden kurulur; seçici açıksa yeniden açılır (yoksa kendi kendine kapanıyordu)
-
-        int _katalogSayfa = -1;
-
-        // Oyun kataloğu: kaydırarak oyunlar (ekran görüntüleri + kurallar); oda sahibi "Şimdi oyna" ile hemen başlatır
-        void OyunSecici()
-        {
-            _seciciAcik = true;
-            var mod = (string)_durum["mode"] ?? "tour";
-            var k = OyunKatalogu.Ac(_ekran, mod, _katalogSayfa, BenHost ? (Action<string>)(kind => Calistir(() => OyunuBaslat(kind))) : null, () => { _seciciAcik = false; _katalogSayfa = -1; });
-            var eski = k.degisti; k.degisti = sayfa => { eski?.Invoke(sayfa); _katalogSayfa = sayfa; };
-        }
-
-        async Task OyunuBaslat(string kind)
-        {
-            _seciciAcik = false; _katalogSayfa = -1;
-            if (kind == "tour")
-            {
-                if ((string)_durum["mode"] != "tour") await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = "tour" });
-                await PartiApi.Eylem(_kod, "tourGames", new JObject { ["games"] = OyunKayit.Turlar() });
-            }
-            else if ((string)_durum["mode"] != kind) await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = kind });
-            var r = await PartiApi.Eylem(_kod, "start"); _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz();
-        }
-
-        async Task Baslat()
-        {
-            var secili = (string)_durum["mode"];
-            if (secili != "tour" && OyunKayit.Var(secili)) { /* tek oyun: mod zaten seçili */ }
-            else if (OyunKayit.Sayi > 1)
-            {
-                if ((string)_durum["mode"] != "tour") await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = "tour" });
-                await PartiApi.Eylem(_kod, "tourGames", new JObject { ["games"] = OyunKayit.Turlar() });
-            }
-            else if ((string)_durum["mode"] != (string)OyunKayit.Turlar()[0]) await PartiApi.Eylem(_kod, "mode", new JObject { ["mode"] = OyunKayit.Turlar()[0] });
-            var r = await PartiApi.Eylem(_kod, "start"); _durum = (JObject)r["state"]; _lobiAnahtar = ""; Ciz();
-        }
-
         void OdadanCik() => Calistir(async () => { _yokla = false; try { await PartiApi.Eylem(_kod, "leave"); } catch { } AnaMenu(); });
 
         // Oyuncu rengindeki isim kartı (alt-orta noktası karakterin başına oturur); bot için oda sahibine X düğmesi
@@ -391,33 +275,6 @@ namespace PartiLigi.UI
             ad.horizontalOverflow = HorizontalWrapMode.Overflow;
             if (ad.preferredWidth > 134) ad.fontSize = Mathf.Max(16, Mathf.FloorToInt(28 * 134 / ad.preferredWidth));
             Ui.Golge(ad, 2, 0.5f);
-            return rt;
-        }
-
-        RectTransform Etiket(JObject p, string hostId)
-        {
-            var id = (string)p["id"];
-            var rt = Ui.Rect("Etiket_" + id, _etiketKok);
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); rt.pivot = new Vector2(0.5f, 0); rt.sizeDelta = new Vector2(180, 80);
-            var renk = Renk((string)p["color"]); renk.a = 0.95f;
-            Ui.Kart(rt.gameObject, renk, 2.2f).raycastTarget = false;
-            var ad = Ui.Yazi(rt, (string)p["name"], 32, Ui.Beyaz, TextAnchor.MiddleCenter, true); Ui.Doldur(ad.rectTransform, 10, 30, 10, 4);
-            // tek satır: uzun isimde yazıyı genişliğe göre küçült (Unity'nin best fit'i iki satıra bölmeyi seçiyor)
-            ad.horizontalOverflow = HorizontalWrapMode.Overflow;
-            if (ad.preferredWidth > 160) ad.fontSize = Mathf.Max(18, Mathf.FloorToInt(32 * 160 / ad.preferredWidth));
-            Ui.Golge(ad, 3, 0.5f);
-            var rol = id == PartiApi.PlayerId ? "Sen" : id == hostId ? "Oda sahibi" : (bool)p["bot"] ? "Bot" : "";
-            if (id == PartiApi.PlayerId && id == hostId) rol = "Sen · oda sahibi";
-            var r = Ui.Yazi(rt, rol, 21, new Color(1, 1, 1, 0.85f), TextAnchor.MiddleCenter, true); Ui.Doldur(r.rectTransform, 6, 6, 6, 48);
-            if (BenHost && (bool)p["bot"])
-            {
-                var x = Ui.Rect("Sil", rt); x.anchorMin = x.anchorMax = new Vector2(1, 1); x.pivot = new Vector2(0.5f, 0.5f);
-                x.sizeDelta = new Vector2(56, 56); x.anchoredPosition = new Vector2(-6, -6);
-                var xim = Ui.Kart(x.gameObject, Ui.Pembe, 3.2f);
-                var b = x.gameObject.AddComponent<Button>(); b.targetGraphic = xim;
-                var xt = Ui.Yazi(x, "X", 32, Ui.Beyaz, TextAnchor.MiddleCenter, true); Ui.Doldur(xt.rectTransform);
-                b.onClick.AddListener(() => Calistir(async () => { var res = await PartiApi.Eylem(_kod, "removeBot", new JObject { ["botId"] = id }); _durum = (JObject)res["state"]; _lobiAnahtar = ""; Ciz(); }));
-            }
             return rt;
         }
 

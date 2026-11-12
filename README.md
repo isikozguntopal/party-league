@@ -2,21 +2,32 @@
 
 Telefonda (Safari → Ana Ekrana Ekle) oynanan, oda koduyla arkadaşlarla ya da botlarla oynanan parti oyunu.
 
-| Oyun | Tür | Nasıl |
-|---|---|---|
-| 🔴 **Lazer Kafes** | tur tabanlı | Gizlice yerleş, nişan al. Sırayla ateş edilir; mermi vurduğunu iter (bilardo zinciri). Platformdan düşen elenir, alan her tur küçülür. 2D / FPS. |
-| 💣 **Bomba Ustası** | gerçek zamanlı | Bomberman: sol joystick yürür, 💣 bomba bırakır. Kutulardan 🔥 💣 👟 çıkar. 70 sn sonra duvarlar kapanır. 2D / 3D takip / FPS. |
-| 🎨 **Kulaktan Kulağa** | tur tabanlı | Gartic Phone: yaz → çiz → tahmin et… Albümde çizimler hızlandırılmış (2–3x) tekrar edilir; çizmeyenler ➕/➖ oy verir, oylar puan olur. |
-| 🖍️ **Ne Çizdim?** | tur tabanlı | Gartic.io: sırayla biri 3 kelimeden birini seçip canlı çizer, diğerleri tahmin yazar. İlk bilen 10, sonra 9, 8… (en az 3); çizen ilk doğru tahminde 10, sonraki her birinde +1, herkes bilirse +5. Harf ipuçları süre ilerledikçe açılır; ~680 kelime, aynı odada kelime tekrar etmez. |
-| 🧠 **Bil Bakalım** | tur tabanlı | 6 kategoriden oylamayla seçilir (oy verenin yüzü görünür) → 4 soru → o an sonuncu olan yeni konuyu seçer → 4 soru. Herkesin baştan 2 jokeri var: ✂️ Yarı Yarıya (iki yanlış şıkkı siler) ve ✌️ Çift Cevap (iki şık işaretlenir, biri doğruysa doğru sayılır, puan %60); her biri bir kez kullanılır. |
-| 🗿 **Keski Düellosu** | tur tabanlı | Machine Party'deki Chisel Gauntlet: 3×3×3 taş küpün eksik hali ~9–12 sn gösterilir, ezberden aynısını yont. Yanlış yapan elenir. |
-| 🧨 **Bombayı Çöz** | takım, tur tabanlı | Keep Talking and Nobody Explodes benzeri: biri bombayı, biri kılavuzu görür. Tek sayıda oyuncuda bir anlatıcı + iki dinleyici. |
-| 🏃 **Kör Koşu** | takım, gerçek zamanlı | Koşucu sisin içinde yalnızca önünü görür; rehber haritaya dokunarak yol gösterir. En hızlı takım kazanır. |
-| 🪢 **Halat Çekme** | takım, gerçek zamanlı | İki eşit takım; ÇEK butonuna hızlı bas. |
-| 🛶 **Kayık Kafilesi** | takım, gerçek zamanlı | İkili takım, tek kayık (Fart Together esintili): biri SOL, biri SAĞ kürekte. İT basılı = ritimli kürek; yalnız sol çekerse sağa, yalnız sağ çekerse sola dönülür, birlikte = düz ve hızlı (aynı ritim ekstra hız). Çubuk aşağı = geri kürek, yana = hafif dümen. 💨 gaz: 0,3 sn içinde ikiniz basarsanız düz roket, tek başına fırıl döndürür. Tohumdan üretilen nehir: virajlar, dar boğazlar, kayalar, kayan kütükler, girdaplar, akıntılar; şelaleye ilk varan kazanır. 2D / 3D takip / FPS. |
-| 🏎️ **Pist Canavarı** | gerçek zamanlı | Solda direksiyon, sağda GAZ/FREN. 3 tur. 2D / 3D takip / FPS (kokpit). |
-| 🥇 **Kapışma** | tur tabanlı | Herkes ilk 3 tahminini gizlice yapar, sonra kategorideki seçenekler ikişer ikişer kapışır; çoğunluk seçer. Podyum açılınca tam isabet +3, podyumda yanlış sıra +1. Ayrıntı: [docs/kapisma](docs/kapisma/README.md). |
-| 🏆 **Turnuva** | — | Lobide seçilen oyunlar sırayla. 1. → 3, 2. → 2, 3. → 1 puan. Aralarda skor grafiği, sonunda podyum. |
+**Oyun listesi:** web sürümünde 21 oyunun hepsi var; iPhone uygulamasında (Unity) 15 oyun hazır, 5 gerçek zamanlı oyun taşınıyor.
+
+| # | Oyun | Tür | Web | iPhone | Nasıl |
+|---|---|---|:---:|:---:|---|
+| 1 | 🪨 **Sapan Arenası** | tur tabanlı | ✅ | ✅ | Gizlice yerleş, nişan al; vurulan itilir. Adadan düşen elenir, alan her tur küçülür. |
+| 2 | 💣 **Bomba Ustası** | gerçek zamanlı | ✅ | ⏳ henüz yok | Labirentte bomba bırak, kutulardan güç topla, rakipleri patlat. |
+| 3 | 🎨 **Kulaktan Kulağa** | tur tabanlı | ✅ | ✅ | Yaz → çiz → tahmin et zinciri; sonunda albüm ve oylama. |
+| 4 | 🖍️ **Ne Çizdim?** | tur tabanlı | ✅ | ✅ | Biri kelimeyi canlı çizer, diğerleri tahmin eder; ilk bilen en çok puanı alır. |
+| 5 | 🧠 **Bil Bakalım** | tur tabanlı | ✅ | ✅ | Oylamayla kategori, 2 joker (yarı yarıya, çift cevap), 8 kategori × 100 soru. |
+| 6 | 🗿 **Keski Düellosu** | tur tabanlı | ✅ | ✅ | Kısa süre gösterilen taş küpü ezberden aynı şekilde yont. |
+| 7 | 🧨 **Bombayı Çöz** | takım | ✅ | ✅ | Biri bombayı, biri kılavuzu görür; konuşarak kablo, düğme ve şifreyi çözün. |
+| 8 | 🏃 **Kör Koşu** | takım, gerçek zamanlı | ✅ | ⏳ henüz yok | Koşucu sisin içinde, yönlendirici yolu anlatır. |
+| 9 | 🪢 **Halat Çekme** | takım, gerçek zamanlı | ✅ | ✅ | ÇEK düğmesine hızlı bas, karşı takımı çamura düşür. |
+| 10 | 🛶 **Kayık Kafilesi** | takım, gerçek zamanlı | ✅ | ⏳ henüz yok | Ortak kayıkta birlikte kürek çekip nehri ilk bitiren kazanır. |
+| 11 | 🏎️ **Pist Canavarı** | gerçek zamanlı | ✅ | ⏳ henüz yok | Araba yarışı: direksiyon + gaz/fren, 3 tur. |
+| 12 | 🐾 **Pati Koşusu** | gerçek zamanlı | ✅ | ⏳ henüz yok | Hayvanlarla yandan koşu yarışı, zıpla/kay/özel güç. |
+| 13 | 🎤 **Ortak Şarkı** | tur tabanlı | ✅ | — (kararla taşınmıyor) | Herkes dize yazar, oyun ortak bir şarkı kurup çalar, oylanır. |
+| 14 | 🧩 **Ne Kadar Tanıyorsun?** | takım | ✅ | ✅ | Kendin hakkında soruları cevapla, takım arkadaşın seni tahmin etsin. |
+| 15 | 🏀 **Pota Atışı** | tur tabanlı | ✅ | ✅ | 45 sn çek-bırak basket; ardışık sayılar katlanır. |
+| 16 | 🎧 **Şarkıyı Tahmin Et** | takım | ✅ | ✅ | Şarkının ilk saniyelerinden adını bul; takım ortak karar verir. |
+| 17 | ⏱️ **Kayıp Saniye** | tur tabanlı | ✅ | ✅ | Kronometre 3. saniyede kaybolur; hedef süreyi içinden sayıp durdur. |
+| 18 | 🐑 **Sürü** | tur tabanlı | ✅ | ✅ | Kalabalıkla aynı cevabı ver, tek kalan kara koyun olur. |
+| 19 | 🎯 **Ayar** | tur tabanlı | ✅ | ✅ | Anlatıcının ipucuyla kadrandaki gizli noktayı bul. |
+| 20 | ☕ **Telve** | tur tabanlı | ✅ | ✅ | Falcı bir kartı yorumlar, herkes kendi kartını karıştırır; doğruyu bul. |
+| 21 | 🥇 **Kapışma** | tur tabanlı | ✅ | ✅ | Gizli ilk 3 tahmini, sonra seçenekler ikişer kapışır; tam isabet +3. [Ekranlar](docs/kapisma/README.md) |
+| — | 🏆 **Turnuva** | — | ✅ | ✅ | Lobide seçilen oyunlar sırayla. 1. → 3, 2. → 2, 3. → 1 puan. Aralarda skor grafiği, sonunda podyum. |
 
 ### 🥇 Kapışma: ekranlar
 

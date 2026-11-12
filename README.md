@@ -18,6 +18,19 @@ Telefonda (Safari → Ana Ekrana Ekle) oynanan, oda koduyla arkadaşlarla ya da 
 | 🥇 **Kapışma** | tur tabanlı | Herkes ilk 3 tahminini gizlice yapar, sonra kategorideki seçenekler ikişer ikişer kapışır; çoğunluk seçer. Podyum açılınca tam isabet +3, podyumda yanlış sıra +1. Ayrıntı: [docs/kapisma](docs/kapisma/README.md). |
 | 🏆 **Turnuva** | — | Lobide seçilen oyunlar sırayla. 1. → 3, 2. → 2, 3. → 1 puan. Aralarda skor grafiği, sonunda podyum. |
 
+### 🥇 Kapışma: ekranlar
+
+Herkes ilk 3 tahminini gizlice yapar, sonra seçenekler ikişer ikişer kapışır. Podyum açılınca tahminler puanlanır.
+Ayrıntı: [docs/kapisma](docs/kapisma/README.md).
+
+| Web: kategori | Web: tahmin | Web: eşleşme | Web: sonuç |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/kapisma/web/1-kategori.jpg" width="170"> | <img src="docs/kapisma/web/2-tahmin.jpg" width="170"> | <img src="docs/kapisma/web/3-eslesme.jpg" width="170"> | <img src="docs/kapisma/web/4-sonuc.jpg" width="170"> |
+
+| Mobil: başlık | Mobil: tahmin | Mobil: eşleşme | Mobil: sonuç |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/kapisma/mobil/1-baslik.jpg" width="170"> | <img src="docs/kapisma/mobil/3-tahmin.jpg" width="170"> | <img src="docs/kapisma/mobil/4-eslesme.jpg" width="170"> | <img src="docs/kapisma/mobil/5-sonuc.jpg" width="170"> |
+
 **Gerçek zamanlı oyunlar:** Netlify WebSocket desteklemediği için telefonlar WebRTC ile doğrudan bağlanır
 (bağlantı kurulumu mevcut `/api` üzerinden). Oyunu oda sahibinin telefonu yönetir (30 Hz simülasyon, 15 Hz
 görüntü), diğerleri kumanda gönderir. Bazı mobil operatör ağlarında doğrudan bağlantı kurulamayabilir;

@@ -15,6 +15,7 @@ Telefonda (Safari → Ana Ekrana Ekle) oynanan, oda koduyla arkadaşlarla ya da 
 | 🪢 **Halat Çekme** | takım, gerçek zamanlı | İki eşit takım; ÇEK butonuna hızlı bas. |
 | 🛶 **Kayık Kafilesi** | takım, gerçek zamanlı | İkili takım, tek kayık (Fart Together esintili): biri SOL, biri SAĞ kürekte. İT basılı = ritimli kürek; yalnız sol çekerse sağa, yalnız sağ çekerse sola dönülür, birlikte = düz ve hızlı (aynı ritim ekstra hız). Çubuk aşağı = geri kürek, yana = hafif dümen. 💨 gaz: 0,3 sn içinde ikiniz basarsanız düz roket, tek başına fırıl döndürür. Tohumdan üretilen nehir: virajlar, dar boğazlar, kayalar, kayan kütükler, girdaplar, akıntılar; şelaleye ilk varan kazanır. 2D / 3D takip / FPS. |
 | 🏎️ **Pist Canavarı** | gerçek zamanlı | Solda direksiyon, sağda GAZ/FREN. 3 tur. 2D / 3D takip / FPS (kokpit). |
+| 🥇 **Kapışma** | tur tabanlı | Herkes ilk 3 tahminini gizlice yapar, sonra kategorideki seçenekler ikişer ikişer kapışır; çoğunluk seçer. Podyum açılınca tam isabet +3, podyumda yanlış sıra +1. Ayrıntı: [docs/kapisma](docs/kapisma/README.md). |
 | 🏆 **Turnuva** | — | Lobide seçilen oyunlar sırayla. 1. → 3, 2. → 2, 3. → 1 puan. Aralarda skor grafiği, sonunda podyum. |
 
 **Gerçek zamanlı oyunlar:** Netlify WebSocket desteklemediği için telefonlar WebRTC ile doğrudan bağlanır
